@@ -9,6 +9,7 @@ final class AppEnvironment: ObservableObject {
     let playbackCoordinator: PlaybackCoordinator
 
     private let transportFactory: (ServerConfiguration) -> Transporting
+    private var cancellables = Set<AnyCancellable>()
 
     init(
         settingsStore: SettingsStore,
@@ -22,6 +23,7 @@ final class AppEnvironment: ObservableObject {
         self.downloadManager = downloadManager
         self.playbackCoordinator = playbackCoordinator
         self.transportFactory = transportFactory
+        bindChildObjects()
     }
 
     static func live() throws -> AppEnvironment {
@@ -192,5 +194,25 @@ final class AppEnvironment: ObservableObject {
     func makeClient() throws -> SubsonicClient {
         let configuration = try settingsStore.buildServerConfiguration()
         return SubsonicClient(configuration: configuration, transport: transportFactory(configuration))
+    }
+
+    private func bindChildObjects() {
+        settingsStore.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        downloadManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        playbackCoordinator.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 }

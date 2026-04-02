@@ -47,13 +47,12 @@ struct AlbumsView: View {
                         AlbumRowView(
                             album: album,
                             isDownloaded: environment.downloadManager.hasLocalContent(albumID: album.id),
-                            artworkURL: coverArtURL(for: album.coverArtID)
+                            artworkURL: coverArtURL(for: album.coverArtID),
+                            isCurrentPlaying: environment.playbackCoordinator.currentAlbum?.id == album.id
                         )
                     }
                 }
             }
-
-            NowPlayingLinkSection()
         }
         .navigationTitle("Albums")
         .task {

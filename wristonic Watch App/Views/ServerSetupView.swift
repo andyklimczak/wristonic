@@ -9,6 +9,10 @@ struct ServerSetupView: View {
     var showHeader: Bool = true
     var onSuccess: (() -> Void)?
 
+    @State private var serverAddress = ""
+    @State private var username = ""
+    @State private var password = ""
+    @State private var allowInsecure = false
     @State private var connectionMessage: String?
     @State private var isTestingConnection = false
 
@@ -16,8 +20,6 @@ struct ServerSetupView: View {
         List {
             if showHeader {
                 Section {
-                    Text(title)
-                        .font(.headline)
                     if let subtitle {
                         Text(subtitle)
                             .font(.footnote)
@@ -26,22 +28,42 @@ struct ServerSetupView: View {
                 }
             }
 
-            Section("Server") {
-                TextField("URL", text: serverURLBinding)
+            Section {
+                TextField("Server Address", text: $serverAddress)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
-                TextField("Username", text: usernameBinding)
+
+                Toggle("Allow Insecure", isOn: $allowInsecure)
+
+                if !normalizedServerAddress.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Using")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(normalizedServerAddress)
+                            .font(.caption2)
+                            .lineLimit(2)
+                    }
+                }
+
+                TextField("Username", text: $username)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
-                SecureField("Password", text: passwordBinding)
-                Toggle("Allow Insecure", isOn: allowInsecureBinding)
+
+                SecureField("Password", text: $password)
             }
 
             Section {
                 Button(isTestingConnection ? "Connecting..." : confirmTitle) {
                     Task { await saveAndTest() }
                 }
-                .disabled(isTestingConnection || !environment.settingsStore.canConnect)
+                .disabled(isTestingConnection || !canConnect)
+
+                if let validationMessage, !canConnect {
+                    Text(validationMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
 
                 if let connectionMessage {
                     Text(connectionMessage)
@@ -51,17 +73,69 @@ struct ServerSetupView: View {
             }
         }
         .navigationTitle(title)
-        .onChange(of: environment.settingsStore.settings) { _, _ in
-            Task { await environment.settingsStore.persist() }
-        }
-        .onChange(of: environment.settingsStore.password) { _, _ in
-            Task { await environment.settingsStore.persist() }
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            loadDraftFromSettings()
         }
     }
 
+    private var trimmedServerAddress: String {
+        serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedUsername: String {
+        username.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var normalizedServerAddress: String {
+        guard !trimmedServerAddress.isEmpty else { return "" }
+        if trimmedServerAddress.contains("://") {
+            return trimmedServerAddress
+        }
+        return (allowInsecure ? "http://" : "https://") + trimmedServerAddress
+    }
+
+    private var canConnect: Bool {
+        guard !trimmedUsername.isEmpty, !password.isEmpty else { return false }
+        guard !normalizedServerAddress.isEmpty else { return false }
+        return URL(string: normalizedServerAddress) != nil
+    }
+
+    private var validationMessage: String? {
+        if trimmedServerAddress.isEmpty {
+            return "Enter a server address."
+        }
+        if URL(string: normalizedServerAddress) == nil {
+            return "Enter a valid server address."
+        }
+        if trimmedUsername.isEmpty {
+            return "Enter a username."
+        }
+        if password.isEmpty {
+            return "Enter a password."
+        }
+        return nil
+    }
+
+    private func loadDraftFromSettings() {
+        let settings = environment.settingsStore.settings
+        serverAddress = settings.serverURLString
+        username = settings.username
+        password = environment.settingsStore.password
+        allowInsecure = settings.allowInsecureConnections
+    }
+
     private func saveAndTest() async {
+        connectionMessage = nil
         isTestingConnection = true
         defer { isTestingConnection = false }
+
+        var settings = environment.settingsStore.settings
+        settings.serverURLString = trimmedServerAddress
+        settings.username = trimmedUsername
+        settings.allowInsecureConnections = allowInsecure
+        environment.settingsStore.settings = settings
+        environment.settingsStore.password = password
 
         do {
             await environment.settingsStore.persist()
@@ -72,33 +146,5 @@ struct ServerSetupView: View {
         } catch {
             connectionMessage = error.localizedDescription
         }
-    }
-
-    private var serverURLBinding: Binding<String> {
-        Binding(
-            get: { environment.settingsStore.settings.serverURLString },
-            set: { environment.settingsStore.settings.serverURLString = $0 }
-        )
-    }
-
-    private var usernameBinding: Binding<String> {
-        Binding(
-            get: { environment.settingsStore.settings.username },
-            set: { environment.settingsStore.settings.username = $0 }
-        )
-    }
-
-    private var passwordBinding: Binding<String> {
-        Binding(
-            get: { environment.settingsStore.password },
-            set: { environment.settingsStore.password = $0 }
-        )
-    }
-
-    private var allowInsecureBinding: Binding<Bool> {
-        Binding(
-            get: { environment.settingsStore.settings.allowInsecureConnections },
-            set: { environment.settingsStore.settings.allowInsecureConnections = $0 }
-        )
     }
 }

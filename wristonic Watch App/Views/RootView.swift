@@ -2,37 +2,40 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var environment: AppEnvironment
-    @State private var showOnboarding = false
 
     var body: some View {
-        NavigationStack {
-            List {
-                NavigationLink("Artists") {
-                    ArtistsView()
-                }
+        Group {
+            if environment.settingsStore.needsServerSetup {
+                OnboardingView()
+                    .environmentObject(environment)
+            } else {
+                NavigationStack {
+                    List {
+                        NowPlayingSummarySection()
 
-                NavigationLink("Albums") {
-                    AlbumsView()
-                }
+                        NavigationLink {
+                            ArtistsView()
+                        } label: {
+                            Label("Artists", systemImage: "music.mic")
+                        }
 
-                NavigationLink("Settings") {
-                    SettingsView()
-                }
+                        NavigationLink {
+                            AlbumsView()
+                        } label: {
+                            Label("Albums", systemImage: "square.stack")
+                        }
 
-                NowPlayingLinkSection()
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+
+                    }
+                    .navigationTitle("wristonic")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
             }
-            .navigationTitle("wristonic")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-        .sheet(isPresented: $showOnboarding) {
-            OnboardingView()
-                .environmentObject(environment)
-        }
-        .onAppear {
-            showOnboarding = environment.settingsStore.needsServerSetup
-        }
-        .onChange(of: environment.settingsStore.needsServerSetup) { _, needsServerSetup in
-            showOnboarding = needsServerSetup
         }
     }
 }

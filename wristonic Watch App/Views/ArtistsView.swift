@@ -21,15 +21,10 @@ struct ArtistsView: View {
                     NavigationLink {
                         ArtistDetailView(artist: artist)
                     } label: {
-                        ArtistRowView(
-                            artist: artist,
-                            hasDownloads: environment.downloadManager.hasDownloadedArtist(artistID: artist.id)
-                        )
+                        ArtistListRowView(artist: artist)
                     }
                 }
             }
-
-            NowPlayingLinkSection()
         }
         .navigationTitle("Artists")
         .task {
@@ -52,6 +47,62 @@ struct ArtistsView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+}
+
+struct ArtistListRowView: View {
+    @EnvironmentObject private var environment: AppEnvironment
+    let artist: ArtistSummary
+
+    @State private var artworkURL: URL?
+
+    var body: some View {
+        ArtistRowView(
+            artist: artist,
+            hasDownloads: environment.downloadManager.hasDownloadedArtist(artistID: artist.id),
+            artworkURL: artworkURL
+        )
+        .task(id: artist.id) {
+            await loadArtwork()
+        }
+    }
+
+    private func loadArtwork() async {
+        if let coverArtID = cachedCoverArtID() {
+            artworkURL = coverArtURL(for: coverArtID)
+            return
+        }
+
+        guard !environment.settingsStore.settings.offlineOnly else {
+            artworkURL = nil
+            return
+        }
+
+        do {
+            let albums = try await environment.repository.artistAlbums(artistID: artist.id)
+            artworkURL = coverArtURL(for: albums.first?.coverArtID)
+        } catch {
+            artworkURL = nil
+        }
+    }
+
+    private func cachedCoverArtID() -> String? {
+        if let cachedAlbum = environment.repository.cachedSnapshot.albumsByArtist[artist.id]?.first {
+            return cachedAlbum.coverArtID
+        }
+
+        return environment.downloadManager.downloadedRecords()
+            .first(where: { $0.album.artistID == artist.id })?
+            .album
+            .coverArtID
+    }
+
+    private func coverArtURL(for coverArtID: String?) -> URL? {
+        do {
+            return try environment.makeClient().coverArtURL(for: coverArtID)
+        } catch {
+            return nil
+        }
     }
 }
 
@@ -81,13 +132,12 @@ struct ArtistDetailView: View {
                         AlbumRowView(
                             album: album,
                             isDownloaded: environment.downloadManager.hasLocalContent(albumID: album.id),
-                            artworkURL: coverArtURL(for: album.coverArtID)
+                            artworkURL: coverArtURL(for: album.coverArtID),
+                            isCurrentPlaying: environment.playbackCoordinator.currentAlbum?.id == album.id
                         )
                     }
                 }
             }
-
-            NowPlayingLinkSection()
         }
         .navigationTitle(artist.name)
         .task {

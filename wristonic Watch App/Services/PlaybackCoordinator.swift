@@ -1,9 +1,11 @@
 import AVFoundation
 import Combine
 import Foundation
+import MediaPlayer
+import UIKit
 
 @MainActor
-final class PlaybackCoordinator: ObservableObject {
+final class PlaybackCoordinator: NSObject, ObservableObject {
     @Published private(set) var currentTrack: Track?
     @Published private(set) var currentAlbum: AlbumSummary?
     @Published private(set) var queue: [Track] = []
@@ -22,6 +24,8 @@ final class PlaybackCoordinator: ObservableObject {
     private var currentTrackListenSeconds: TimeInterval = 0
     private var currentSourceCandidates: [URL] = []
     private var candidateIndex = 0
+    private var nowPlayingArtworkID: String?
+    private var nowPlayingArtwork: MPMediaItemArtwork?
 
     init(
         downloadManager: DownloadManager,
@@ -31,7 +35,9 @@ final class PlaybackCoordinator: ObservableObject {
         self.downloadManager = downloadManager
         self.settingsStore = settingsStore
         self.clientProvider = clientProvider
+        super.init()
         configureObservers()
+        configureRemoteCommands()
     }
 
     deinit {
@@ -55,9 +61,41 @@ final class PlaybackCoordinator: ObservableObject {
             player.pause()
             isPlaying = false
         } else {
+            activateAudioSession()
             player.play()
             isPlaying = true
         }
+        refreshNowPlayingInfo()
+    }
+
+    func stop() {
+        finalizePlaybackRecord()
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        currentTrack = nil
+        currentAlbum = nil
+        queue = []
+        currentIndex = 0
+        isPlaying = false
+        elapsed = 0
+        duration = 0
+        currentTrackListenSeconds = 0
+        currentSourceCandidates = []
+        candidateIndex = 0
+        nowPlayingArtworkID = nil
+        nowPlayingArtwork = nil
+        refreshNowPlayingInfo()
+    }
+
+    func seek(by delta: TimeInterval) {
+        guard currentTrack != nil else { return }
+        let upperBound = duration > 0 ? duration : max(elapsed + delta, 0)
+        let target = min(max(elapsed + delta, 0), upperBound)
+        let time = CMTime(seconds: target, preferredTimescale: 600)
+        player.seek(to: time)
+        elapsed = target
+        currentTrackListenSeconds = max(currentTrackListenSeconds, target)
+        refreshNowPlayingInfo()
     }
 
     func skipForward() async {
@@ -70,6 +108,7 @@ final class PlaybackCoordinator: ObservableObject {
     func skipBackward() async {
         if elapsed > 5 {
             await player.seek(to: .zero)
+            refreshNowPlayingInfo()
             return
         }
         guard currentIndex > 0 else { return }
@@ -78,11 +117,16 @@ final class PlaybackCoordinator: ObservableObject {
         await playCurrentTrack()
     }
 
+    func isCurrentTrack(_ track: Track) -> Bool {
+        currentTrack?.id == track.id
+    }
+
     private func playCurrentTrack() async {
         guard let track = queue[safe: currentIndex] else { return }
         currentTrack = track
         lastError = nil
         currentTrackListenSeconds = 0
+        updateArtworkIfNeeded()
 
         if let localURL = downloadManager.localFileURL(for: track) {
             currentSourceCandidates = [localURL]
@@ -101,6 +145,7 @@ final class PlaybackCoordinator: ObservableObject {
         }
 
         candidateIndex = 0
+        refreshNowPlayingInfo()
         await startCurrentCandidate()
     }
 
@@ -113,8 +158,10 @@ final class PlaybackCoordinator: ObservableObject {
         }
         let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
+        activateAudioSession()
         player.play()
         isPlaying = true
+        refreshNowPlayingInfo()
     }
 
     private func configureObservers() {
@@ -129,6 +176,7 @@ final class PlaybackCoordinator: ObservableObject {
                 duration = nextDuration
                 currentTrackListenSeconds = max(currentTrackListenSeconds, nextElapsed)
                 isPlaying = playing
+                refreshNowPlayingInfo()
             }
         }
 
@@ -149,11 +197,139 @@ final class PlaybackCoordinator: ObservableObject {
             await playCurrentTrack()
         } else {
             isPlaying = false
+            refreshNowPlayingInfo()
         }
     }
 
     private func finalizePlaybackRecord() {
         guard let track = currentTrack else { return }
         downloadManager.recordPlayback(for: track, listenedSeconds: currentTrackListenSeconds)
+    }
+
+    private func activateAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default)
+            try session.setActive(true)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func configureRemoteCommands() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+
+        commandCenter.playCommand.addTarget(self, action: #selector(handlePlayCommand(_:)))
+        commandCenter.pauseCommand.addTarget(self, action: #selector(handlePauseCommand(_:)))
+        commandCenter.nextTrackCommand.addTarget(self, action: #selector(handleNextTrackCommand(_:)))
+        commandCenter.previousTrackCommand.addTarget(self, action: #selector(handlePreviousTrackCommand(_:)))
+        commandCenter.togglePlayPauseCommand.addTarget(self, action: #selector(handleTogglePlayPauseCommand(_:)))
+    }
+
+    private func refreshNowPlayingInfo() {
+        guard let track = currentTrack else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: track.title,
+            MPMediaItemPropertyArtist: track.artistName,
+            MPMediaItemPropertyAlbumTitle: track.albumName,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+        ]
+
+        if duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+
+        if let nowPlayingArtwork {
+            info[MPMediaItemPropertyArtwork] = nowPlayingArtwork
+        }
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    private func updateArtworkIfNeeded() {
+        guard let coverArtID = currentAlbum?.coverArtID else {
+            nowPlayingArtworkID = nil
+            nowPlayingArtwork = nil
+            refreshNowPlayingInfo()
+            return
+        }
+
+        guard nowPlayingArtworkID != coverArtID || nowPlayingArtwork == nil else {
+            return
+        }
+
+        nowPlayingArtworkID = coverArtID
+        nowPlayingArtwork = nil
+
+        guard let coverArtURL = try? clientProvider().coverArtURL(for: coverArtID) else {
+            refreshNowPlayingInfo()
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard nowPlayingArtworkID == coverArtID else { return }
+            guard let image = await CoverArtStore.shared.uiImage(for: coverArtURL) else {
+                refreshNowPlayingInfo()
+                return
+            }
+
+            nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            refreshNowPlayingInfo()
+        }
+    }
+
+    @objc
+    private func handlePlayCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        guard currentTrack != nil else { return .commandFailed }
+        if !isPlaying {
+            activateAudioSession()
+            player.play()
+            isPlaying = true
+            refreshNowPlayingInfo()
+        }
+        return .success
+    }
+
+    @objc
+    private func handlePauseCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        guard currentTrack != nil else { return .commandFailed }
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+            refreshNowPlayingInfo()
+        }
+        return .success
+    }
+
+    @objc
+    private func handleNextTrackCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        guard currentIndex + 1 < queue.count else { return .commandFailed }
+        Task { await skipForward() }
+        return .success
+    }
+
+    @objc
+    private func handlePreviousTrackCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        guard !queue.isEmpty else { return .commandFailed }
+        Task { await skipBackward() }
+        return .success
+    }
+
+    @objc
+    private func handleTogglePlayPauseCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        guard currentTrack != nil else { return .commandFailed }
+        togglePlayback()
+        return .success
     }
 }

@@ -10,6 +10,7 @@ final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
     private let keychain: KeychainStore
     private let defaultsKey = "wristonic.settings"
+    private let passwordFallbackKey = "wristonic.password.fallback"
 
     init(defaults: UserDefaults = .standard, keychain: KeychainStore = KeychainStore(service: "com.andy.wristonic")) {
         self.defaults = defaults
@@ -24,7 +25,7 @@ final class SettingsStore: ObservableObject {
             self.settings = AppSettings()
         }
 
-        self.password = (try? keychain.value(for: "password")) ?? ""
+        self.password = (try? keychain.value(for: "password")) ?? defaults.string(forKey: passwordFallbackKey) ?? ""
         if let username = try? keychain.value(for: "username"), !username.isEmpty {
             self.settings.username = username
         }
@@ -42,14 +43,26 @@ final class SettingsStore: ObservableObject {
         normalizedURL != nil && !settings.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
+    var hasSavedPassword: Bool {
+        !password.isEmpty
+    }
+
     var needsServerSetup: Bool {
         !canConnect
     }
 
     var normalizedURL: URL? {
+        URL(string: normalizedServerAddress)
+    }
+
+    var normalizedServerAddress: String {
         let trimmed = settings.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        return URL(string: trimmed)
+        guard !trimmed.isEmpty else { return "" }
+        if trimmed.contains("://") {
+            return trimmed
+        }
+        let scheme = settings.allowInsecureConnections ? "http://" : "https://"
+        return scheme + trimmed
     }
 
     func persist() async {
@@ -64,6 +77,11 @@ final class SettingsStore: ObservableObject {
                 try keychain.set(password, for: "password")
             }
         } catch {
+        }
+        if password.isEmpty {
+            defaults.removeObject(forKey: passwordFallbackKey)
+        } else {
+            defaults.set(password, forKey: passwordFallbackKey)
         }
     }
 
