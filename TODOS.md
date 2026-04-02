@@ -186,6 +186,7 @@
 - [x] Add basic queue progression within the selected album.
 - [x] Expose playback metadata needed for a watch-friendly Now Playing experience.
 - [x] Record meaningful playback history only after a listen threshold is met.
+- [x] Report now-playing and scrobble events to Subsonic/Navidrome, with durable retry for scrobbles across offline gaps and app relaunches.
 
 ### Phase 6: Downloads, Storage Cap, and Eviction
 - [x] Implement `DownloadManager` with a serial or tightly limited concurrent queue suitable for watch battery and networking constraints.

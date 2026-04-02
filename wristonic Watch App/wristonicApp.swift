@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct wristonic_Watch_AppApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var environment: AppEnvironment
 
     init() {
@@ -15,6 +16,10 @@ struct wristonic_Watch_AppApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(environment)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            environment.playbackReportingManager.notifyAppDidBecomeActive()
         }
     }
 }

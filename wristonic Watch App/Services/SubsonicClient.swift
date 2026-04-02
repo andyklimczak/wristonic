@@ -143,6 +143,21 @@ final class SubsonicClient {
         try await transport.download(for: request)
     }
 
+    func reportNowPlaying(trackID: String, listenedAt: Date = Date()) async throws {
+        try await scrobble(trackID: trackID, listenedAt: listenedAt, submission: false)
+    }
+
+    func scrobble(trackID: String, listenedAt: Date = Date(), submission: Bool = true) async throws {
+        _ = try await requestDictionary(
+            path: "scrobble",
+            queryItems: [
+                URLQueryItem(name: "id", value: trackID),
+                URLQueryItem(name: "time", value: String(Int64(listenedAt.timeIntervalSince1970 * 1000))),
+                URLQueryItem(name: "submission", value: submission ? "true" : "false")
+            ]
+        )
+    }
+
     private func requestDictionary(path: String, queryItems: [URLQueryItem] = []) async throws -> [String: Any] {
         let url = authenticatedURL(path: path, queryItems: queryItems)
         let (data, _) = try await transport.data(for: URLRequest(url: url))

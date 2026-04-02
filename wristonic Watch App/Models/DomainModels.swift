@@ -92,6 +92,15 @@ struct PlaybackHistory: Codable, Hashable {
     var lastPlayedAt: Date?
 }
 
+struct PendingPlaybackScrobble: Identifiable, Codable, Hashable {
+    var id: String
+    var trackID: String
+    var listenedAt: Date
+    var createdAt: Date
+    var attempts: Int
+    var nextRetryAt: Date
+}
+
 struct StoragePolicy: Codable, Equatable {
     var capBytes: Int64
     var savedBytes: Int64

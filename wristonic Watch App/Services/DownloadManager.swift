@@ -144,11 +144,12 @@ final class DownloadManager: ObservableObject {
         persist()
     }
 
-    func recordPlayback(for track: Track, listenedSeconds: TimeInterval) {
+    @discardableResult
+    func recordPlayback(for track: Track, listenedSeconds: TimeInterval) -> Bool {
         let duration = track.duration ?? 0
         let threshold = min(max(duration * 0.5, 20), 120)
         guard listenedSeconds >= threshold || duration == 0 else {
-            return
+            return false
         }
         let current = playbackHistory[track.id] ?? PlaybackHistory(trackID: track.id, playCount: 0, lastPlayedAt: nil)
         playbackHistory[track.id] = PlaybackHistory(trackID: track.id, playCount: current.playCount + 1, lastPlayedAt: Date())
@@ -160,6 +161,7 @@ final class DownloadManager: ObservableObject {
         Task {
             try? await historyStore.save(playbackHistory)
         }
+        return true
     }
 
     func refreshStoragePolicy() {

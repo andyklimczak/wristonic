@@ -18,6 +18,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private let player = AVPlayer()
     private let downloadManager: DownloadManager
     private let playbackCacheManager: PlaybackCacheManager
+    private let playbackReportingManager: PlaybackReportingManager
     private let settingsStore: SettingsStore
     private let clientProvider: () throws -> SubsonicClient
     private var timeObserverToken: Any?
@@ -31,11 +32,13 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     init(
         downloadManager: DownloadManager,
         playbackCacheManager: PlaybackCacheManager,
+        playbackReportingManager: PlaybackReportingManager,
         settingsStore: SettingsStore,
         clientProvider: @escaping () throws -> SubsonicClient
     ) {
         self.downloadManager = downloadManager
         self.playbackCacheManager = playbackCacheManager
+        self.playbackReportingManager = playbackReportingManager
         self.settingsStore = settingsStore
         self.clientProvider = clientProvider
         super.init()
@@ -182,6 +185,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         activateAudioSession()
         player.play()
         isPlaying = true
+        playbackReportingManager.reportNowPlaying(track: track)
+        playbackReportingManager.flushIfNeeded(force: false)
         refreshNowPlayingInfo()
     }
 
@@ -224,7 +229,9 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     private func finalizePlaybackRecord() {
         guard let track = currentTrack else { return }
-        downloadManager.recordPlayback(for: track, listenedSeconds: currentTrackListenSeconds)
+        if downloadManager.recordPlayback(for: track, listenedSeconds: currentTrackListenSeconds) {
+            playbackReportingManager.enqueueScrobble(for: track)
+        }
     }
 
     private func activateAudioSession() {

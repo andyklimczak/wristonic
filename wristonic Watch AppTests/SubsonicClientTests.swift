@@ -65,4 +65,29 @@ final class SubsonicClientTests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "Bad credentials")
         }
     }
+
+    func testScrobbleRequestUsesSubmissionTrueAndTimestamp() async throws {
+        let transport = RecordingTransport()
+        transport.dataResponses["scrobble"] = Data(#"{"subsonic-response":{"status":"ok","version":"1.16.1"}}"#.utf8)
+        let listenedAt = Date(timeIntervalSince1970: 1_700_000_000)
+
+        try await makeClient(using: transport).scrobble(trackID: "track-1", listenedAt: listenedAt, submission: true)
+
+        let components = URLComponents(url: try XCTUnwrap(transport.requests.last?.url), resolvingAgainstBaseURL: false)
+        let queryItems = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(queryItems["id"], "track-1")
+        XCTAssertEqual(queryItems["submission"], "true")
+        XCTAssertEqual(queryItems["time"], "1700000000000")
+    }
+
+    func testNowPlayingRequestUsesSubmissionFalse() async throws {
+        let transport = RecordingTransport()
+        transport.dataResponses["scrobble"] = Data(#"{"subsonic-response":{"status":"ok","version":"1.16.1"}}"#.utf8)
+
+        try await makeClient(using: transport).reportNowPlaying(trackID: "track-1")
+
+        let components = URLComponents(url: try XCTUnwrap(transport.requests.last?.url), resolvingAgainstBaseURL: false)
+        let queryItems = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(queryItems["submission"], "false")
+    }
 }

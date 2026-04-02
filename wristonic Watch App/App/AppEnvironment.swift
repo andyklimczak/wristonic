@@ -7,6 +7,7 @@ final class AppEnvironment: ObservableObject {
     let repository: LibraryRepository
     let downloadManager: DownloadManager
     let playbackCacheManager: PlaybackCacheManager
+    let playbackReportingManager: PlaybackReportingManager
     let playbackCoordinator: PlaybackCoordinator
 
     private let transportFactory: (ServerConfiguration) -> Transporting
@@ -17,6 +18,7 @@ final class AppEnvironment: ObservableObject {
         repository: LibraryRepository,
         downloadManager: DownloadManager,
         playbackCacheManager: PlaybackCacheManager,
+        playbackReportingManager: PlaybackReportingManager,
         playbackCoordinator: PlaybackCoordinator,
         transportFactory: @escaping (ServerConfiguration) -> Transporting
     ) {
@@ -24,6 +26,7 @@ final class AppEnvironment: ObservableObject {
         self.repository = repository
         self.downloadManager = downloadManager
         self.playbackCacheManager = playbackCacheManager
+        self.playbackReportingManager = playbackReportingManager
         self.playbackCoordinator = playbackCoordinator
         self.transportFactory = transportFactory
         bindChildObjects()
@@ -39,6 +42,7 @@ final class AppEnvironment: ObservableObject {
         let recordsStore = JSONFileStore<[DownloadRecord]>(url: try AppPaths.storeFile(named: "downloads.json"))
         let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: try AppPaths.storeFile(named: "playback-history.json"))
         let playbackCacheStore = JSONFileStore<[PlaybackCacheRecord]>(url: try AppPaths.storeFile(named: "playback-cache.json"))
+        let playbackScrobbleStore = JSONFileStore<[PendingPlaybackScrobble]>(url: try AppPaths.storeFile(named: "playback-scrobbles.json"))
         let downloadsDirectory = try AppPaths.downloadsDirectory()
         let playbackCacheDirectory = try AppPaths.playbackCacheDirectory()
 
@@ -69,6 +73,14 @@ final class AppEnvironment: ObservableObject {
             }
         )
 
+        let playbackReportingManager = PlaybackReportingManager(
+            queueStore: playbackScrobbleStore,
+            settingsStore: settingsStore,
+            clientProvider: {
+                try environment.makeClient()
+            }
+        )
+
         let repository = LibraryRepository(
             cacheStore: cacheStore,
             settingsStore: settingsStore,
@@ -83,6 +95,7 @@ final class AppEnvironment: ObservableObject {
         let playbackCoordinator = PlaybackCoordinator(
             downloadManager: downloadManager,
             playbackCacheManager: playbackCacheManager,
+            playbackReportingManager: playbackReportingManager,
             settingsStore: settingsStore,
             clientProvider: {
                 try environment.makeClient()
@@ -94,6 +107,7 @@ final class AppEnvironment: ObservableObject {
             repository: repository,
             downloadManager: downloadManager,
             playbackCacheManager: playbackCacheManager,
+            playbackReportingManager: playbackReportingManager,
             playbackCoordinator: playbackCoordinator,
             transportFactory: transportFactory
         )
@@ -115,6 +129,7 @@ final class AppEnvironment: ObservableObject {
         let recordsStore = JSONFileStore<[DownloadRecord]>(url: tempRoot.appendingPathComponent("downloads.json"))
         let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: tempRoot.appendingPathComponent("history.json"))
         let playbackCacheStore = JSONFileStore<[PlaybackCacheRecord]>(url: tempRoot.appendingPathComponent("playback-cache.json"))
+        let playbackScrobbleStore = JSONFileStore<[PendingPlaybackScrobble]>(url: tempRoot.appendingPathComponent("playback-scrobbles.json"))
         let downloadsDirectory = tempRoot.appendingPathComponent("downloads", isDirectory: true)
         let playbackCacheDirectory = tempRoot.appendingPathComponent("playback-cache", isDirectory: true)
         try FileManager.default.createDirectory(at: downloadsDirectory, withIntermediateDirectories: true)
@@ -182,6 +197,14 @@ final class AppEnvironment: ObservableObject {
             }
         )
 
+        let playbackReportingManager = PlaybackReportingManager(
+            queueStore: playbackScrobbleStore,
+            settingsStore: settingsStore,
+            clientProvider: {
+                try environment.makeClient()
+            }
+        )
+
         let repository = LibraryRepository(
             cacheStore: cacheStore,
             settingsStore: settingsStore,
@@ -196,6 +219,7 @@ final class AppEnvironment: ObservableObject {
         let playbackCoordinator = PlaybackCoordinator(
             downloadManager: downloadManager,
             playbackCacheManager: playbackCacheManager,
+            playbackReportingManager: playbackReportingManager,
             settingsStore: settingsStore,
             clientProvider: {
                 try environment.makeClient()
@@ -207,6 +231,7 @@ final class AppEnvironment: ObservableObject {
             repository: repository,
             downloadManager: downloadManager,
             playbackCacheManager: playbackCacheManager,
+            playbackReportingManager: playbackReportingManager,
             playbackCoordinator: playbackCoordinator,
             transportFactory: transportFactory
         )
@@ -218,6 +243,8 @@ final class AppEnvironment: ObservableObject {
         await repository.loadCachedSnapshot()
         await downloadManager.load()
         await playbackCacheManager.load()
+        await playbackReportingManager.load()
+        playbackReportingManager.flushIfNeeded(force: false)
     }
 
     func makeClient() throws -> SubsonicClient {

@@ -182,6 +182,8 @@ final class DemoTransport: Transporting {
             string = DemoMode.albumListPayload
         case "getCoverArt":
             return Data()
+        case "scrobble":
+            string = #"{"subsonic-response":{"status":"ok","version":"1.16.1"}}"#
         default:
             string = #"{"subsonic-response":{"status":"failed","error":{"message":"Unknown endpoint"}}}"#
         }
