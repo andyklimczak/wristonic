@@ -517,7 +517,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_KEY_CFBundleDisplayName = wristonic;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.andy.wristonic;
+				PRODUCT_BUNDLE_IDENTIFIER = com.andyklimczak.wristonic;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -533,7 +533,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_KEY_CFBundleDisplayName = wristonic;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.andy.wristonic;
+				PRODUCT_BUNDLE_IDENTIFIER = com.andyklimczak.wristonic;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
