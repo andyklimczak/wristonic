@@ -53,6 +53,7 @@
 		A120ED322F7E086700D10F11 /* wristonic Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "wristonic Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A120ED412F7E086B00D10F11 /* wristonic Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "wristonic Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A120ED4B2F7E086B00D10F11 /* wristonic Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "wristonic Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1D764142F7E14AB009EF7AC /* TODOS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = TODOS.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -101,6 +102,7 @@
 		A120ED252F7E086600D10F11 = {
 			isa = PBXGroup;
 			children = (
+				A1D764142F7E14AB009EF7AC /* TODOS.md */,
 				A120ED362F7E086700D10F11 /* wristonic Watch App */,
 				A120ED442F7E086B00D10F11 /* wristonic Watch AppTests */,
 				A120ED4E2F7E086B00D10F11 /* wristonic Watch AppUITests */,
