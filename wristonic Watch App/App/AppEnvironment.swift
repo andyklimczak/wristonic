@@ -11,6 +11,7 @@ final class AppEnvironment: ObservableObject {
     let playbackCoordinator: PlaybackCoordinator
 
     private let transportFactory: (ServerConfiguration) -> Transporting
+    private let networkMonitor: NetworkMonitor
     private var cancellables = Set<AnyCancellable>()
 
     init(
@@ -20,6 +21,7 @@ final class AppEnvironment: ObservableObject {
         playbackCacheManager: PlaybackCacheManager,
         playbackReportingManager: PlaybackReportingManager,
         playbackCoordinator: PlaybackCoordinator,
+        networkMonitor: NetworkMonitor,
         transportFactory: @escaping (ServerConfiguration) -> Transporting
     ) {
         self.settingsStore = settingsStore
@@ -28,6 +30,7 @@ final class AppEnvironment: ObservableObject {
         self.playbackCacheManager = playbackCacheManager
         self.playbackReportingManager = playbackReportingManager
         self.playbackCoordinator = playbackCoordinator
+        self.networkMonitor = networkMonitor
         self.transportFactory = transportFactory
         bindChildObjects()
     }
@@ -81,6 +84,10 @@ final class AppEnvironment: ObservableObject {
             }
         )
 
+        let networkMonitor = NetworkMonitor {
+            playbackReportingManager.flushIfNeeded(force: false)
+        }
+
         let repository = LibraryRepository(
             cacheStore: cacheStore,
             settingsStore: settingsStore,
@@ -109,6 +116,7 @@ final class AppEnvironment: ObservableObject {
             playbackCacheManager: playbackCacheManager,
             playbackReportingManager: playbackReportingManager,
             playbackCoordinator: playbackCoordinator,
+            networkMonitor: networkMonitor,
             transportFactory: transportFactory
         )
         return environment
@@ -205,6 +213,10 @@ final class AppEnvironment: ObservableObject {
             }
         )
 
+        let networkMonitor = NetworkMonitor {
+            playbackReportingManager.flushIfNeeded(force: false)
+        }
+
         let repository = LibraryRepository(
             cacheStore: cacheStore,
             settingsStore: settingsStore,
@@ -233,6 +245,7 @@ final class AppEnvironment: ObservableObject {
             playbackCacheManager: playbackCacheManager,
             playbackReportingManager: playbackReportingManager,
             playbackCoordinator: playbackCoordinator,
+            networkMonitor: networkMonitor,
             transportFactory: transportFactory
         )
         return environment
@@ -245,6 +258,7 @@ final class AppEnvironment: ObservableObject {
         await playbackCacheManager.load()
         await playbackReportingManager.load()
         playbackReportingManager.flushIfNeeded(force: false)
+        networkMonitor.start()
     }
 
     func makeClient() throws -> SubsonicClient {

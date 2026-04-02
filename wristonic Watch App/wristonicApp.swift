@@ -1,7 +1,9 @@
 import SwiftUI
+import WatchKit
 
 @main
 struct wristonic_Watch_AppApp: App {
+    @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var environment: AppEnvironment
 

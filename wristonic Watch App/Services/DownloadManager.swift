@@ -246,7 +246,7 @@ final class DownloadManager: ObservableObject {
         var lastError: Error?
         for candidate in candidates {
             do {
-                let (temporaryURL, _) = try await client.download(for: candidate.request)
+                let temporaryURL = try await BackgroundDownloadService.shared.download(for: candidate.request)
                 let albumDirectory = try self.albumDirectory(albumID: track.albumID, createIfNeeded: true)
                 let fileName = "\(track.trackNumber)-\(track.id).\(candidate.fileExtension)"
                 let destinationURL = albumDirectory.appendingPathComponent(fileName, isDirectory: false)

@@ -74,17 +74,31 @@ final class LibraryRepository: ObservableObject {
     }
 
     func albumDetail(albumID: String, forceRefresh: Bool = false) async throws -> AlbumDetail {
-        if settingsStore.settings.offlineOnly, let record = downloadRecordsProvider().first(where: { $0.album.id == albumID }) {
-            return AlbumDetail(album: record.album, tracks: record.tracks)
+        let localDetail = downloadRecordsProvider()
+            .first(where: { $0.album.id == albumID && !$0.tracks.isEmpty })
+            .map { AlbumDetail(album: $0.album, tracks: $0.tracks) }
+
+        if settingsStore.settings.offlineOnly, let localDetail {
+            return localDetail
         }
         if !forceRefresh, let cached = cachedSnapshot.albumDetails[albumID] {
             return cached
         }
-        let detail = try await clientProvider().album(id: albumID)
-        cachedSnapshot.albumDetails[albumID] = detail
-        cachedSnapshot.lastUpdatedAt = Date()
-        try? await cacheStore.save(cachedSnapshot)
-        return detail
+        if !forceRefresh, let localDetail {
+            return localDetail
+        }
+        do {
+            let detail = try await clientProvider().album(id: albumID)
+            cachedSnapshot.albumDetails[albumID] = detail
+            cachedSnapshot.lastUpdatedAt = Date()
+            try? await cacheStore.save(cachedSnapshot)
+            return detail
+        } catch {
+            if let localDetail {
+                return localDetail
+            }
+            throw error
+        }
     }
 
     private func offlineArtists() -> [ArtistSummary] {

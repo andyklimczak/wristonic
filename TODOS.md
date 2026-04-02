@@ -187,6 +187,7 @@
 - [x] Expose playback metadata needed for a watch-friendly Now Playing experience.
 - [x] Record meaningful playback history only after a listen threshold is met.
 - [x] Report now-playing and scrobble events to Subsonic/Navidrome, with durable retry for scrobbles across offline gaps and app relaunches.
+- [x] Flush queued scrobbles when network connectivity returns.
 
 ### Phase 6: Downloads, Storage Cap, and Eviction
 - [x] Implement `DownloadManager` with a serial or tightly limited concurrent queue suitable for watch battery and networking constraints.
@@ -197,6 +198,7 @@
 - [x] Mark local availability at the track and album level based on actual downloaded files.
 - [x] Add delete-downloaded-album behavior on album detail screens.
 - [x] Ensure deleting an album removes files, updates metadata, and refreshes blue-dot indicators.
+- [x] Allow downloaded albums to open and play from local metadata even when offline-only mode is disabled and the server is unreachable.
 - [x] Enforce the user’s size cap before completing a new album download.
 - [x] Re-check the size cap after download completion as a safety pass.
 - [x] Implement pinning so pinned albums are never auto-evicted.
