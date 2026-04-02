@@ -116,135 +116,136 @@
 ## Detailed Todo Checklist
 
 ### Phase 0: Project Setup and Baseline
-- [ ] Lower the app deployment target from the template default to `watchOS 10+`.
-- [ ] Confirm the app remains standalone with no companion iPhone target or `WatchConnectivity` dependency.
-- [ ] Define the app folder structure for views, models, services, persistence, and tests.
-- [ ] Add any required capabilities and entitlements for networking, media playback, and background-friendly download behavior that are appropriate for watchOS.
-- [ ] Add Info.plist keys and transport security configuration needed for HTTPS by default and opt-in insecure/self-signed server support.
-- [ ] Replace the template `Hello, world!` entry screen with a placeholder root navigation shell for `Artists`, `Albums`, and `Settings`.
+- [x] Lower the app deployment target from the template default to `watchOS 10+`.
+- [x] Confirm the app remains standalone with no companion iPhone target or `WatchConnectivity` dependency.
+- [x] Define the app folder structure for views, models, services, persistence, and tests.
+- [x] Add any required capabilities and entitlements for networking, media playback, and background-friendly download behavior that are appropriate for watchOS.
+- [x] Add Info.plist keys and transport security configuration needed for HTTPS by default and opt-in insecure/self-signed server support.
+- [x] Replace the template `Hello, world!` entry screen with a placeholder root navigation shell for `Artists`, `Albums`, and `Settings`.
 
 ### Phase 1: Core Domain Models and Persistence
-- [ ] Define shared domain models for artist, album, track, cover art reference, download status, storage policy, and playback history.
-- [ ] Define a stable identifier strategy for artists, albums, tracks, and download records using Subsonic ids.
+- [x] Define shared domain models for artist, album, track, cover art reference, download status, storage policy, and playback history.
+- [x] Define a stable identifier strategy for artists, albums, tracks, and download records using Subsonic ids.
 - [ ] Choose and implement the local persistence approach for:
-- [ ] server settings
-- [ ] album and track metadata cache
-- [ ] download records
-- [ ] pin state
-- [ ] playback history
-- [ ] size cap
-- [ ] offline-only preference
-- [ ] Create repository-facing types for album sort mode, local availability state, and download progress.
-- [ ] Add disk path conventions for album and track storage in an app-owned library directory.
-- [ ] Add storage utilities to calculate saved bytes from real files on disk.
+- [x] server settings
+- [x] album and track metadata cache
+- [x] download records
+- [x] pin state
+- [x] playback history
+- [x] size cap
+- [x] offline-only preference
+- [x] Create repository-facing types for album sort mode, local availability state, and download progress.
+- [x] Add disk path conventions for album and track storage in an app-owned library directory.
+- [x] Add storage utilities to calculate saved bytes from real files on disk.
 
 ### Phase 2: Server Connection and Authentication
-- [ ] Implement `SettingsStore` for server URL, username, password, bitrate/transcode preference, insecure-server toggle, size cap, and offline-only toggle.
-- [ ] Store credentials securely using Keychain-backed storage.
-- [ ] Implement Subsonic request signing with `u`, `t`, and `s` auth parameters.
-- [ ] Implement common request building with API version `1.16.1`, JSON output, and client id `wristonic`.
-- [ ] Implement a `ping`-based connection test flow from Settings.
-- [ ] Add clear error handling for invalid credentials, unreachable servers, malformed URLs, TLS failures, and unsupported responses.
-- [ ] Add logic to scope insecure/self-signed exceptions to the configured host only.
-- [ ] Validate compatibility against Navidrome-oriented response samples and assumptions.
+- [x] Implement `SettingsStore` for server URL, username, password, bitrate/transcode preference, insecure-server toggle, size cap, and offline-only toggle.
+- [x] Store credentials securely using Keychain-backed storage.
+- [x] Implement Subsonic request signing with `u`, `t`, and `s` auth parameters.
+- [x] Implement common request building with API version `1.16.1`, JSON output, and client id `wristonic`.
+- [x] Implement a `ping`-based connection test flow from Settings.
+- [x] Add clear error handling for invalid credentials, unreachable servers, malformed URLs, TLS failures, and unsupported responses.
+- [x] Add logic to scope insecure/self-signed exceptions to the configured host only.
+- [x] Validate compatibility against Navidrome-oriented response samples and assumptions.
 
 ### Phase 3: Subsonic API Integration
 - [ ] Implement `SubsonicClient` support for:
-- [ ] `ping`
-- [ ] `getArtists` or `getIndexes`
-- [ ] `getArtist`
-- [ ] `getAlbum`
-- [ ] `getAlbumList2`
-- [ ] `getCoverArt`
-- [ ] `stream`
-- [ ] Add decoders for artist, album, and track payloads that tolerate Subsonic-compatible server variations where practical.
-- [ ] Implement album list requests for `Name`, `Random`, and `Recently Added`.
-- [ ] Implement cover art loading and caching strategy suitable for watch memory constraints.
-- [ ] Implement stream URL building with preferred transcoding parameters.
-- [ ] Add fallback behavior for servers that do not transcode or ignore transcode parameters.
+- [x] `ping`
+- [x] `getArtists` or `getIndexes`
+- [x] `getArtist`
+- [x] `getAlbum`
+- [x] `getAlbumList2`
+- [x] `getCoverArt`
+- [x] `stream`
+- [x] Add decoders for artist, album, and track payloads that tolerate Subsonic-compatible server variations where practical.
+- [x] Implement album list requests for `Name`, `Random`, and `Recently Added`.
+- [x] Implement cover art loading and caching strategy suitable for watch memory constraints.
+- [x] Implement stream URL building with preferred transcoding parameters.
+- [x] Add fallback behavior for servers that do not transcode or ignore transcode parameters.
 
 ### Phase 4: Browse Experience and Navigation
-- [ ] Build the root navigation screen with `Artists`, `Albums`, and `Settings`.
-- [ ] Build the `Artists` list screen with lightweight loading, empty state, and error state handling.
-- [ ] Show a blue dot next to artist names when any album for that artist is downloaded locally.
-- [ ] Build artist detail screens that show the artist’s albums and each album’s local/download state.
-- [ ] Build the `Albums` browse screen with sorting/filtering for `Name`, `Random`, and `Recently Added`.
-- [ ] Show a blue dot next to album names when the album is fully downloaded or contains any downloaded tracks.
-- [ ] Build album detail screens with cover art, track list, local/download state, and actions.
-- [ ] Add pull-to-refresh or explicit reload behavior where appropriate for watch-friendly server refreshes.
-- [ ] Ensure browse screens degrade gracefully when the app is in offline-only mode.
+- [x] Build the root navigation screen with `Artists`, `Albums`, and `Settings`.
+- [x] Build the `Artists` list screen with lightweight loading, empty state, and error state handling.
+- [x] Show a blue dot next to artist names when any album for that artist is downloaded locally.
+- [x] Build artist detail screens that show the artist’s albums and each album’s local/download state.
+- [x] Build the `Albums` browse screen with sorting/filtering for `Name`, `Random`, and `Recently Added`.
+- [x] Show a blue dot next to album names when the album is fully downloaded or contains any downloaded tracks.
+- [x] Build album detail screens with cover art, track list, local/download state, and actions.
+- [x] Add pull-to-refresh or explicit reload behavior where appropriate for watch-friendly server refreshes.
+- [x] Ensure browse screens degrade gracefully when the app is in offline-only mode.
 
 ### Phase 5: Playback
-- [ ] Choose the playback stack for watchOS local and remote audio playback.
-- [ ] Implement `PlaybackCoordinator` to manage Now Playing state, queue progression, and local-vs-remote source selection.
-- [ ] Support starting playback from an album.
-- [ ] Support starting playback from an individual track.
-- [ ] Prefer local files when a track has been downloaded.
-- [ ] Fall back to remote streaming when local media is unavailable and offline-only mode is disabled.
-- [ ] Disable remote playback fallback when offline-only mode is enabled.
-- [ ] Add basic queue progression within the selected album.
-- [ ] Expose playback metadata needed for a watch-friendly Now Playing experience.
-- [ ] Record meaningful playback history only after a listen threshold is met.
+- [x] Choose the playback stack for watchOS local and remote audio playback.
+- [x] Implement `PlaybackCoordinator` to manage Now Playing state, queue progression, and local-vs-remote source selection.
+- [x] Support starting playback from an album.
+- [x] Support starting playback from an individual track.
+- [x] Prefer local files when a track has been downloaded.
+- [x] Fall back to remote streaming when local media is unavailable and offline-only mode is disabled.
+- [x] Disable remote playback fallback when offline-only mode is enabled.
+- [x] Add basic queue progression within the selected album.
+- [x] Expose playback metadata needed for a watch-friendly Now Playing experience.
+- [x] Record meaningful playback history only after a listen threshold is met.
 
 ### Phase 6: Downloads, Storage Cap, and Eviction
-- [ ] Implement `DownloadManager` with a serial or tightly limited concurrent queue suitable for watch battery and networking constraints.
-- [ ] Add album-level download requests from album detail screens.
-- [ ] Download each track for an album into the library directory using stable file naming.
-- [ ] Track queued, active, completed, and failed download states.
-- [ ] Resume or recover in-progress downloads safely after app relaunch when possible.
-- [ ] Mark local availability at the track and album level based on actual downloaded files.
-- [ ] Add delete-downloaded-album behavior on album detail screens.
-- [ ] Ensure deleting an album removes files, updates metadata, and refreshes blue-dot indicators.
-- [ ] Enforce the user’s size cap before completing a new album download.
-- [ ] Re-check the size cap after download completion as a safety pass.
-- [ ] Implement pinning so pinned albums are never auto-evicted.
+- [x] Implement `DownloadManager` with a serial or tightly limited concurrent queue suitable for watch battery and networking constraints.
+- [x] Add album-level download requests from album detail screens.
+- [x] Download each track for an album into the library directory using stable file naming.
+- [x] Track queued, active, completed, and failed download states.
+- [x] Resume or recover in-progress downloads safely after app relaunch when possible.
+- [x] Mark local availability at the track and album level based on actual downloaded files.
+- [x] Add delete-downloaded-album behavior on album detail screens.
+- [x] Ensure deleting an album removes files, updates metadata, and refreshes blue-dot indicators.
+- [x] Enforce the user’s size cap before completing a new album download.
+- [x] Re-check the size cap after download completion as a safety pass.
+- [x] Implement pinning so pinned albums are never auto-evicted.
 - [ ] Implement least-played eviction ordering using:
-- [ ] `playCount ascending`
-- [ ] `lastPlayedAt ascending`
-- [ ] `downloadedAt ascending`
-- [ ] Evict whole albums until storage falls back under the configured cap.
-- [ ] Block additional downloads when pinned albums alone exceed the cap and show a clear explanation.
-- [ ] Keep the saved-size display based on actual file sizes on disk rather than server metadata estimates.
+- [x] `playCount ascending`
+- [x] `lastPlayedAt ascending`
+- [x] `downloadedAt ascending`
+- [x] Evict whole albums until storage falls back under the configured cap.
+- [x] Block additional downloads when pinned albums alone exceed the cap and show a clear explanation.
+- [x] Keep the saved-size display based on actual file sizes on disk rather than server metadata estimates.
 
 ### Phase 7: Settings and Download Management UI
-- [ ] Build the main Settings screen with server credentials, connection test, insecure-server toggle, transcode preference, size cap, saved-size summary, and offline-only toggle.
-- [ ] Add validation and friendly error messaging for server setup inputs.
-- [ ] Add a `Downloads` or `Downloaded` screen reachable from Settings.
-- [ ] Show queued downloads on that screen.
-- [ ] Show active download progress on that screen.
-- [ ] Show completed saved albums on that screen.
-- [ ] Add delete actions for downloaded albums on that screen.
-- [ ] Surface pinned state and storage usage in download-management views where helpful.
-- [ ] Ensure settings changes take effect immediately where safe, and on next request/playback where immediate change is not practical.
+- [x] Build the main Settings screen with server credentials, connection test, insecure-server toggle, transcode preference, size cap, saved-size summary, and offline-only toggle.
+- [x] Add validation and friendly error messaging for server setup inputs.
+- [x] Add a `Downloads` or `Downloaded` screen reachable from Settings.
+- [x] Show queued downloads on that screen.
+- [x] Show active download progress on that screen.
+- [x] Show completed saved albums on that screen.
+- [x] Add delete actions for downloaded albums on that screen.
+- [x] Surface pinned state and storage usage in download-management views where helpful.
+- [x] Ensure settings changes take effect immediately where safe, and on next request/playback where immediate change is not practical.
 
 ### Phase 8: Offline-Only Mode and Local Library Behavior
-- [ ] Implement the persistent `Offline Only` setting.
-- [ ] Filter artist browsing to only artists with downloaded albums when offline-only mode is enabled.
-- [ ] Filter album browsing to only albums with downloaded content when offline-only mode is enabled.
-- [ ] Ensure artist blue dots and album blue dots remain correct while toggling offline-only mode.
-- [ ] Prevent any remote streaming or remote metadata dependency for already-cached downloaded views when offline-only mode is enabled.
-- [ ] Define and implement the empty states for offline-only mode when no music has been downloaded yet.
+- [x] Implement the persistent `Offline Only` setting.
+- [x] Filter artist browsing to only artists with downloaded albums when offline-only mode is enabled.
+- [x] Filter album browsing to only albums with downloaded content when offline-only mode is enabled.
+- [x] Ensure artist blue dots and album blue dots remain correct while toggling offline-only mode.
+- [x] Prevent any remote streaming or remote metadata dependency for already-cached downloaded views when offline-only mode is enabled.
+- [x] Define and implement the empty states for offline-only mode when no music has been downloaded yet.
 
 ### Phase 9: Polish, Accessibility, and Watch UX
-- [ ] Review list density, tap target size, and hierarchy depth against watchOS best practices.
-- [ ] Add loading, empty, and failure states for all major screens.
-- [ ] Ensure all major actions are reachable with minimal taps on the watch.
+- [x] Review list density, tap target size, and hierarchy depth against watchOS best practices.
+- [x] Add loading, empty, and failure states for all major screens.
+- [x] Ensure all major actions are reachable with minimal taps on the watch.
 - [ ] Add accessibility labels and values for download indicators, playback controls, and settings.
-- [ ] Check color usage so the blue download dot remains visible and understandable.
+- [x] Check color usage so the blue download dot remains visible and understandable.
 - [ ] Review battery, network, and storage behavior for watch-appropriate defaults.
 - [ ] Add lightweight instrumentation or debug logging for networking, downloads, eviction, and playback failures.
 
 ### Phase 10: Testing and Validation
-- [ ] Add unit tests for Subsonic auth token and signature generation.
-- [ ] Add unit tests for request construction and album sort mode mapping.
-- [ ] Add unit tests for decoding representative Subsonic and Navidrome artist, album, and track payloads.
-- [ ] Add unit tests for transcode-preferred stream selection and original-file fallback.
-- [ ] Add unit tests for local size accounting from real files on disk.
-- [ ] Add unit tests for download state transitions and album availability aggregation.
+- Remaining unchecked items in this phase require either broader test coverage or a functioning watch simulator/runtime than is available in the current environment.
+- [x] Add unit tests for Subsonic auth token and signature generation.
+- [x] Add unit tests for request construction and album sort mode mapping.
+- [x] Add unit tests for decoding representative Subsonic and Navidrome artist, album, and track payloads.
+- [x] Add unit tests for transcode-preferred stream selection and original-file fallback.
+- [x] Add unit tests for local size accounting from real files on disk.
+- [x] Add unit tests for download state transitions and album availability aggregation.
 - [ ] Add unit tests for eviction ordering, pin protection, and pinned-albums-exceed-cap handling.
-- [ ] Add unit tests for offline-only filtering at the artist and album levels.
+- [x] Add unit tests for offline-only filtering at the artist and album levels.
 - [ ] Add integration-style tests with mocked API responses for successful login, invalid credentials, server without transcoding, and browse flows.
-- [ ] Add integration-style tests for download persistence and recovery after app relaunch.
+- [x] Add integration-style tests for download persistence and recovery after app relaunch.
 - [ ] Add UI tests for first-run setup, artist browsing, album browsing by each sort mode, album download, delete-downloaded-album, offline-only mode, and settings-driven download management.
 - [ ] Run the full test suite and capture any watchOS simulator or device-specific gaps that need manual validation.
 

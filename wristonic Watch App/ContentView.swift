@@ -1,24 +1,12 @@
-//
-//  ContentView.swift
-//  wristonic Watch App
-//
-//  Created by Andy Klimczak on 4/1/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @EnvironmentObject private var environment: AppEnvironment
 
-#Preview {
-    ContentView()
+    var body: some View {
+        RootView()
+            .task {
+                await environment.bootstrap()
+            }
+    }
 }

@@ -23,21 +23,27 @@ final class wristonic_Watch_AppUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testBrowseArtistsAndAlbumsInDemoMode() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["WRISTONIC_DEMO_MODE"] = "1"
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        app.buttons["Artists"].tap()
+        XCTAssertTrue(app.staticTexts["Aurora Echo"].waitForExistence(timeout: 3))
+        app.buttons["Aurora Echo"].tap()
+        XCTAssertTrue(app.staticTexts["Analog Dawn"].waitForExistence(timeout: 3))
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+    func testSettingsDownloadsScreenShowsSeededAlbum() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["WRISTONIC_DEMO_MODE"] = "1"
+        app.launchEnvironment["WRISTONIC_PRESEED_DOWNLOADS"] = "1"
+        app.launch()
+
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.buttons["Downloads"].waitForExistence(timeout: 3))
+        app.buttons["Downloads"].tap()
+        XCTAssertTrue(app.staticTexts["Analog Dawn"].waitForExistence(timeout: 3))
     }
 }
