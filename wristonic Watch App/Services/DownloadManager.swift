@@ -200,7 +200,7 @@ final class DownloadManager: ObservableObject {
     }
 
     private func download(recordAt index: Int) async throws {
-        var record = records[index]
+        let record = records[index]
         let projectedExisting = storagePolicy.savedBytes - record.savedBytes
         if projectedExisting >= settingsStore.capBytes && !record.pinned {
             try enforceStorageCap(projectedAdditionalBytes: 0, excludingAlbumID: record.album.id)

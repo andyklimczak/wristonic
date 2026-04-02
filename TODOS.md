@@ -181,6 +181,7 @@
 - [x] Support starting playback from an individual track.
 - [x] Prefer local files when a track has been downloaded.
 - [x] Fall back to remote streaming when local media is unavailable and offline-only mode is disabled.
+- [x] Add temporary playback caching for the current track and a short next-track prefetch window without treating cached tracks as permanent downloads.
 - [x] Disable remote playback fallback when offline-only mode is enabled.
 - [x] Add basic queue progression within the selected album.
 - [x] Expose playback metadata needed for a watch-friendly Now Playing experience.

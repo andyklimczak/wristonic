@@ -6,6 +6,7 @@ final class AppEnvironment: ObservableObject {
     let settingsStore: SettingsStore
     let repository: LibraryRepository
     let downloadManager: DownloadManager
+    let playbackCacheManager: PlaybackCacheManager
     let playbackCoordinator: PlaybackCoordinator
 
     private let transportFactory: (ServerConfiguration) -> Transporting
@@ -15,12 +16,14 @@ final class AppEnvironment: ObservableObject {
         settingsStore: SettingsStore,
         repository: LibraryRepository,
         downloadManager: DownloadManager,
+        playbackCacheManager: PlaybackCacheManager,
         playbackCoordinator: PlaybackCoordinator,
         transportFactory: @escaping (ServerConfiguration) -> Transporting
     ) {
         self.settingsStore = settingsStore
         self.repository = repository
         self.downloadManager = downloadManager
+        self.playbackCacheManager = playbackCacheManager
         self.playbackCoordinator = playbackCoordinator
         self.transportFactory = transportFactory
         bindChildObjects()
@@ -35,7 +38,9 @@ final class AppEnvironment: ObservableObject {
         let cacheStore = JSONFileStore<CachedLibrarySnapshot>(url: try AppPaths.storeFile(named: "cache.json"))
         let recordsStore = JSONFileStore<[DownloadRecord]>(url: try AppPaths.storeFile(named: "downloads.json"))
         let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: try AppPaths.storeFile(named: "playback-history.json"))
+        let playbackCacheStore = JSONFileStore<[PlaybackCacheRecord]>(url: try AppPaths.storeFile(named: "playback-cache.json"))
         let downloadsDirectory = try AppPaths.downloadsDirectory()
+        let playbackCacheDirectory = try AppPaths.playbackCacheDirectory()
 
         let transportFactory: (ServerConfiguration) -> Transporting = { configuration in
             URLSessionTransport(
@@ -56,6 +61,14 @@ final class AppEnvironment: ObservableObject {
             }
         )
 
+        let playbackCacheManager = PlaybackCacheManager(
+            recordsStore: playbackCacheStore,
+            cacheDirectory: playbackCacheDirectory,
+            clientProvider: {
+                try environment.makeClient()
+            }
+        )
+
         let repository = LibraryRepository(
             cacheStore: cacheStore,
             settingsStore: settingsStore,
@@ -69,6 +82,7 @@ final class AppEnvironment: ObservableObject {
 
         let playbackCoordinator = PlaybackCoordinator(
             downloadManager: downloadManager,
+            playbackCacheManager: playbackCacheManager,
             settingsStore: settingsStore,
             clientProvider: {
                 try environment.makeClient()
@@ -79,6 +93,7 @@ final class AppEnvironment: ObservableObject {
             settingsStore: settingsStore,
             repository: repository,
             downloadManager: downloadManager,
+            playbackCacheManager: playbackCacheManager,
             playbackCoordinator: playbackCoordinator,
             transportFactory: transportFactory
         )
@@ -99,8 +114,11 @@ final class AppEnvironment: ObservableObject {
         let cacheStore = JSONFileStore<CachedLibrarySnapshot>(url: tempRoot.appendingPathComponent("cache.json"))
         let recordsStore = JSONFileStore<[DownloadRecord]>(url: tempRoot.appendingPathComponent("downloads.json"))
         let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: tempRoot.appendingPathComponent("history.json"))
+        let playbackCacheStore = JSONFileStore<[PlaybackCacheRecord]>(url: tempRoot.appendingPathComponent("playback-cache.json"))
         let downloadsDirectory = tempRoot.appendingPathComponent("downloads", isDirectory: true)
+        let playbackCacheDirectory = tempRoot.appendingPathComponent("playback-cache", isDirectory: true)
         try FileManager.default.createDirectory(at: downloadsDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: playbackCacheDirectory, withIntermediateDirectories: true)
 
         if ProcessInfo.processInfo.environment["WRISTONIC_PRESEED_DOWNLOADS"] == "1" {
             let albumDirectory = downloadsDirectory.appendingPathComponent("album-1", isDirectory: true)
@@ -156,6 +174,14 @@ final class AppEnvironment: ObservableObject {
             }
         )
 
+        let playbackCacheManager = PlaybackCacheManager(
+            recordsStore: playbackCacheStore,
+            cacheDirectory: playbackCacheDirectory,
+            clientProvider: {
+                try environment.makeClient()
+            }
+        )
+
         let repository = LibraryRepository(
             cacheStore: cacheStore,
             settingsStore: settingsStore,
@@ -169,6 +195,7 @@ final class AppEnvironment: ObservableObject {
 
         let playbackCoordinator = PlaybackCoordinator(
             downloadManager: downloadManager,
+            playbackCacheManager: playbackCacheManager,
             settingsStore: settingsStore,
             clientProvider: {
                 try environment.makeClient()
@@ -179,6 +206,7 @@ final class AppEnvironment: ObservableObject {
             settingsStore: settingsStore,
             repository: repository,
             downloadManager: downloadManager,
+            playbackCacheManager: playbackCacheManager,
             playbackCoordinator: playbackCoordinator,
             transportFactory: transportFactory
         )
@@ -189,6 +217,7 @@ final class AppEnvironment: ObservableObject {
         await settingsStore.persist()
         await repository.loadCachedSnapshot()
         await downloadManager.load()
+        await playbackCacheManager.load()
     }
 
     func makeClient() throws -> SubsonicClient {

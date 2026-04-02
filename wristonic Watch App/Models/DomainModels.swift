@@ -121,6 +121,14 @@ struct DownloadedTrackRecord: Codable, Hashable {
     var bytes: Int64
 }
 
+struct PlaybackCacheRecord: Codable, Hashable {
+    var trackID: String
+    var relativePath: String
+    var bytes: Int64
+    var cachedAt: Date
+    var lastAccessedAt: Date
+}
+
 struct DownloadRecord: Identifiable, Codable, Hashable {
     var album: AlbumSummary
     var tracks: [Track]

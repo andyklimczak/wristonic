@@ -3,6 +3,7 @@ import SwiftUI
 struct NowPlayingView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var showAlbumDetail = false
+    @State private var showArtistDetail = false
 
     var body: some View {
         List {
@@ -66,9 +67,14 @@ struct NowPlayingView: View {
                     Button("Previous Track") {
                         Task { await environment.playbackCoordinator.skipBackward() }
                     }
-                    if let album = environment.playbackCoordinator.currentAlbum {
+                    if environment.playbackCoordinator.currentAlbum != nil {
                         Button("Go To Album") {
                             showAlbumDetail = true
+                        }
+                    }
+                    if currentArtist != nil {
+                        Button("Go To Artist") {
+                            showArtistDetail = true
                         }
                     }
                 }
@@ -88,6 +94,18 @@ struct NowPlayingView: View {
                 AlbumDetailView(albumID: album.id, initialAlbum: album)
             }
         }
+        .navigationDestination(isPresented: $showArtistDetail) {
+            if let artist = currentArtist {
+                ArtistDetailView(artist: artist)
+            }
+        }
+    }
+
+    private var currentArtist: ArtistSummary? {
+        guard let track = environment.playbackCoordinator.currentTrack else {
+            return nil
+        }
+        return ArtistSummary(id: track.artistID, name: track.artistName, albumCount: 0)
     }
 
     private func coverArtURL(for coverArtID: String?) -> URL? {

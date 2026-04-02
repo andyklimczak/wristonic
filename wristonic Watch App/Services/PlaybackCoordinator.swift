@@ -17,6 +17,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     private let player = AVPlayer()
     private let downloadManager: DownloadManager
+    private let playbackCacheManager: PlaybackCacheManager
     private let settingsStore: SettingsStore
     private let clientProvider: () throws -> SubsonicClient
     private var timeObserverToken: Any?
@@ -29,10 +30,12 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     init(
         downloadManager: DownloadManager,
+        playbackCacheManager: PlaybackCacheManager,
         settingsStore: SettingsStore,
         clientProvider: @escaping () throws -> SubsonicClient
     ) {
         self.downloadManager = downloadManager
+        self.playbackCacheManager = playbackCacheManager
         self.settingsStore = settingsStore
         self.clientProvider = clientProvider
         super.init()
@@ -70,6 +73,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     func stop() {
         finalizePlaybackRecord()
+        playbackCacheManager.cancelPrefetch()
         player.pause()
         player.replaceCurrentItem(with: nil)
         currentTrack = nil
@@ -130,6 +134,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
         if let localURL = downloadManager.localFileURL(for: track) {
             currentSourceCandidates = [localURL]
+        } else if let cachedURL = playbackCacheManager.localFileURL(for: track) {
+            currentSourceCandidates = [cachedURL]
         } else if settingsStore.settings.offlineOnly {
             lastError = "This track is not downloaded."
             isPlaying = false
@@ -145,8 +151,23 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         }
 
         candidateIndex = 0
+        startPlaybackCaching()
         refreshNowPlayingInfo()
         await startCurrentCandidate()
+    }
+
+    private func startPlaybackCaching() {
+        guard !settingsStore.settings.offlineOnly else {
+            playbackCacheManager.cancelPrefetch()
+            return
+        }
+
+        let permanentlyDownloadedTrackIDs = Set(
+            queue.compactMap { track in
+                downloadManager.localFileURL(for: track) == nil ? nil : track.id
+            }
+        )
+        playbackCacheManager.primePlaybackQueue(queue, currentIndex: currentIndex, excludingTrackIDs: permanentlyDownloadedTrackIDs)
     }
 
     private func startCurrentCandidate() async {
