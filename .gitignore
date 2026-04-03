@@ -50,6 +50,7 @@ playground.xcworkspace
 # .swiftpm
 
 .build/
+.swift-module-cache/
 
 # CocoaPods
 #
