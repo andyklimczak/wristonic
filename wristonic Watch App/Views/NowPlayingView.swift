@@ -11,7 +11,7 @@ struct NowPlayingView: View {
                 Section {
                     VStack(alignment: .center, spacing: 10) {
                         ArtworkView(
-                            url: coverArtURL(for: environment.playbackCoordinator.currentAlbum?.coverArtID),
+                            url: nowPlayingCoverArtURL(),
                             dimension: 96
                         )
 
@@ -61,6 +61,9 @@ struct NowPlayingView: View {
                 }
 
                 Section("Controls") {
+                    Button(environment.playbackCoordinator.isRepeatingAlbum ? "Repeat Album On" : "Repeat Album Off") {
+                        environment.playbackCoordinator.toggleRepeatAlbum()
+                    }
                     Button("Next Track") {
                         Task { await environment.playbackCoordinator.skipForward() }
                     }
@@ -108,12 +111,11 @@ struct NowPlayingView: View {
         return ArtistSummary(id: track.artistID, name: track.artistName, albumCount: 0)
     }
 
-    private func coverArtURL(for coverArtID: String?) -> URL? {
-        do {
-            return try environment.makeClient().coverArtURL(for: coverArtID)
-        } catch {
+    private func nowPlayingCoverArtURL() -> URL? {
+        guard let album = environment.playbackCoordinator.currentAlbum else {
             return nil
         }
+        return preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID)
     }
 
     private func timeString(_ time: TimeInterval) -> String {

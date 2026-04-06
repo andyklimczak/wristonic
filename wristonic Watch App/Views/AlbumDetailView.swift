@@ -52,7 +52,7 @@ struct AlbumDetailView: View {
         Section {
             VStack(alignment: .center, spacing: 10) {
                 ArtworkView(
-                    url: coverArtURL(for: albumDetail.album.coverArtID),
+                    url: preferredCoverArtURL(environment: environment, albumID: albumDetail.album.id, coverArtID: albumDetail.album.coverArtID),
                     dimension: 96
                 )
 
@@ -162,14 +162,6 @@ struct AlbumDetailView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
-    }
-
-    private func coverArtURL(for coverArtID: String?) -> URL? {
-        do {
-            return try environment.makeClient().coverArtURL(for: coverArtID)
-        } catch {
-            return nil
-        }
     }
 
     private func durationString(_ duration: TimeInterval?) -> String {

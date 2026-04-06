@@ -4,15 +4,16 @@ struct DownloadIndicatorView: View {
     var isVisible: Bool
 
     var body: some View {
-        Circle()
-            .fill(.blue)
-            .frame(width: 8, height: 8)
-            .opacity(isVisible ? 1 : 0)
-            .accessibilityHidden(!isVisible)
+        if isVisible {
+            Circle()
+                .fill(.blue)
+                .frame(width: 8, height: 8)
+        }
     }
 }
 
 struct ArtworkView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     let url: URL?
     let dimension: CGFloat
     @State private var image: Image?
@@ -29,7 +30,13 @@ struct ArtworkView: View {
                     .overlay(Image(systemName: "music.note.list"))
                     .task(id: url) {
                         guard let url else { return }
-                        image = await CoverArtStore.shared.image(for: url)
+                        image = await CoverArtStore.shared.image(for: url) { url in
+                            if url.isFileURL {
+                                return try Data(contentsOf: url)
+                            }
+                            let client = try environment.makeClient()
+                            return try await client.data(for: URLRequest(url: url)).0
+                        }
                     }
             }
         }
@@ -51,7 +58,9 @@ struct MediaHeaderView: View {
             ArtworkView(url: artworkURL, dimension: artworkSize)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    DownloadIndicatorView(isVisible: showsDownloadIndicator)
+                    if showsDownloadIndicator {
+                        DownloadIndicatorView(isVisible: true)
+                    }
                     Text(title)
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
@@ -177,11 +186,26 @@ struct NowPlayingSummarySection: View {
     }
 
     private func coverArtURL(for coverArtID: String?) -> URL? {
+        if let albumID = environment.playbackCoordinator.currentAlbum?.id,
+           let localURL = environment.downloadManager.localCoverArtURL(for: albumID) {
+            return localURL
+        }
         do {
             return try environment.makeClient().coverArtURL(for: coverArtID)
         } catch {
             return nil
         }
+    }
+}
+
+func preferredCoverArtURL(environment: AppEnvironment, albumID: String, coverArtID: String?) -> URL? {
+    if let localURL = environment.downloadManager.localCoverArtURL(for: albumID) {
+        return localURL
+    }
+    do {
+        return try environment.makeClient().coverArtURL(for: coverArtID)
+    } catch {
+        return nil
     }
 }
 
@@ -196,7 +220,9 @@ struct AlbumRowView: View {
             ArtworkView(url: artworkURL, dimension: 36)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    DownloadIndicatorView(isVisible: isDownloaded)
+                    if isDownloaded {
+                        DownloadIndicatorView(isVisible: true)
+                    }
                     Text(album.name)
                         .lineLimit(1)
                 }
@@ -240,7 +266,9 @@ struct ArtistRowView: View {
             ArtworkView(url: artworkURL, dimension: 36)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    DownloadIndicatorView(isVisible: hasDownloads)
+                    if hasDownloads {
+                        DownloadIndicatorView(isVisible: true)
+                    }
                     Text(artist.name)
                         .lineLimit(1)
                 }

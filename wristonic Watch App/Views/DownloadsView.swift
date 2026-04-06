@@ -34,7 +34,12 @@ struct DownloadsView: View {
             if !queued.isEmpty {
                 Section("Queued") {
                     ForEach(queued) { record in
-                        Text(record.album.name)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(record.album.name)
+                            Text(trackProgressText(for: record))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -45,6 +50,16 @@ struct DownloadsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(record.album.name)
                             ProgressView(value: record.state.progress)
+                            Text(trackProgressText(for: record))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            HStack {
+                                if let speed = record.state.transferRateBytesPerSecond, speed > 0 {
+                                    Text(speedString(speed))
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -62,6 +77,9 @@ struct DownloadsView: View {
                                 }
                             }
                             Text(record.savedBytes.byteCountString)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(trackProgressText(for: record))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                             Button("Delete Download", role: .destructive) {
@@ -99,5 +117,24 @@ struct DownloadsView: View {
                 environment.downloadManager.deleteAllDownloads()
             }
         }
+    }
+
+    private func trackProgressText(for record: DownloadRecord) -> String {
+        let downloadedCount = record.downloadedTracks.count
+        let totalCount = record.tracks.count
+        switch record.state.status {
+        case .queued:
+            return totalCount > 0 ? "\(downloadedCount)/\(totalCount) tracks ready" : "Queued"
+        case .downloading:
+            return totalCount > 0 ? "\(downloadedCount)/\(totalCount) downloaded" : "Downloading"
+        case .downloaded:
+            return totalCount > 0 ? "\(downloadedCount)/\(totalCount) tracks saved" : "Saved"
+        default:
+            return totalCount > 0 ? "\(downloadedCount)/\(totalCount) tracks" : ""
+        }
+    }
+
+    private func speedString(_ bytesPerSecond: Double) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .file) + "/s"
     }
 }

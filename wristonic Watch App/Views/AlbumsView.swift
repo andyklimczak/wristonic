@@ -47,7 +47,7 @@ struct AlbumsView: View {
                         AlbumRowView(
                             album: album,
                             isDownloaded: environment.downloadManager.hasLocalContent(albumID: album.id),
-                            artworkURL: coverArtURL(for: album.coverArtID),
+                            artworkURL: preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID),
                             isCurrentPlaying: environment.playbackCoordinator.currentAlbum?.id == album.id
                         )
                     }
@@ -66,14 +66,6 @@ struct AlbumsView: View {
         }
         .onChange(of: environment.settingsStore.settings.offlineOnly) { _, _ in
             Task { await loadAlbums() }
-        }
-    }
-
-    private func coverArtURL(for coverArtID: String?) -> URL? {
-        do {
-            return try environment.makeClient().coverArtURL(for: coverArtID)
-        } catch {
-            return nil
         }
     }
 

@@ -42,6 +42,19 @@ struct DownloadState: Codable, Equatable, Hashable {
     var status: DownloadStatus
     var progress: Double
     var errorMessage: String?
+    var transferRateBytesPerSecond: Double?
+
+    init(
+        status: DownloadStatus,
+        progress: Double,
+        errorMessage: String?,
+        transferRateBytesPerSecond: Double? = nil
+    ) {
+        self.status = status
+        self.progress = progress
+        self.errorMessage = errorMessage
+        self.transferRateBytesPerSecond = transferRateBytesPerSecond
+    }
 
     static let notDownloaded = DownloadState(status: .notDownloaded, progress: 0, errorMessage: nil)
 }
@@ -142,6 +155,8 @@ struct DownloadRecord: Identifiable, Codable, Hashable {
     var album: AlbumSummary
     var tracks: [Track]
     var downloadedTracks: [DownloadedTrackRecord]
+    var localCoverArtRelativePath: String? = nil
+    var coverArtBytes: Int64 = 0
     var pinned: Bool
     var state: DownloadState
     var downloadedAt: Date?
@@ -160,7 +175,7 @@ struct DownloadRecord: Identifiable, Codable, Hashable {
     }
 
     var savedBytes: Int64 {
-        downloadedTracks.reduce(into: Int64(0)) { partialResult, track in
+        downloadedTracks.reduce(into: coverArtBytes) { partialResult, track in
             partialResult += track.bytes
         }
     }

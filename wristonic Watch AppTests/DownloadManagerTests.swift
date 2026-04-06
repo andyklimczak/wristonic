@@ -24,6 +24,7 @@ final class DownloadManagerTests: XCTestCase {
 
         XCTAssertTrue(manager.hasLocalContent(albumID: "album-1"))
         XCTAssertGreaterThan(manager.storagePolicy.savedBytes, 0)
+        XCTAssertNotNil(manager.localCoverArtURL(for: "album-1"))
     }
 
     func testDeleteDownloadedAlbumRemovesFilesAndBytes() async throws {

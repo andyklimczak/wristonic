@@ -16,13 +16,20 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate {
     private let lock = NSLock()
     private var continuations: [Int: CheckedContinuation<URL, Error>] = [:]
     private var stagedFiles: [Int: URL] = [:]
+    private var progressHandlers: [Int: @Sendable (Int64, Int64, Double) -> Void] = [:]
+    private var taskStartDates: [Int: Date] = [:]
     private var refreshTasks: [WKURLSessionRefreshBackgroundTask] = []
 
-    func download(for request: URLRequest) async throws -> URL {
+    func download(
+        for request: URLRequest,
+        onProgress: (@Sendable (Int64, Int64, Double) -> Void)? = nil
+    ) async throws -> URL {
         let task = session.downloadTask(with: request)
         return try await withCheckedThrowingContinuation { continuation in
             lock.lock()
             continuations[task.taskIdentifier] = continuation
+            progressHandlers[task.taskIdentifier] = onProgress
+            taskStartDates[task.taskIdentifier] = Date()
             lock.unlock()
             task.resume()
         }
@@ -78,9 +85,32 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate {
         complete(taskIdentifier: task.taskIdentifier, result: .success(fileURL))
     }
 
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        lock.lock()
+        let handler = progressHandlers[downloadTask.taskIdentifier]
+        let startDate = taskStartDates[downloadTask.taskIdentifier]
+        lock.unlock()
+
+        guard let handler, let startDate else {
+            return
+        }
+
+        let elapsed = max(Date().timeIntervalSince(startDate), 0.25)
+        let bytesPerSecond = Double(totalBytesWritten) / elapsed
+        handler(totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond)
+    }
+
     private func complete(taskIdentifier: Int, result: Result<URL, Error>) {
         lock.lock()
         let continuation = continuations.removeValue(forKey: taskIdentifier)
+        progressHandlers.removeValue(forKey: taskIdentifier)
+        taskStartDates.removeValue(forKey: taskIdentifier)
         if case .failure = result, let stagedFile = stagedFiles.removeValue(forKey: taskIdentifier) {
             try? FileManager.default.removeItem(at: stagedFile)
         }

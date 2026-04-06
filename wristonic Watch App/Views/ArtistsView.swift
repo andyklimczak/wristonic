@@ -6,6 +6,20 @@ struct ArtistsView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
 
+    private var groupedArtists: [(key: String, artists: [ArtistSummary])] {
+        let grouped = Dictionary(grouping: artists) { artist in
+            sectionKey(for: artist.name)
+        }
+
+        return grouped.keys.sorted(by: sectionOrder).map { key in
+            (
+                key: key,
+                artists: grouped[key, default: []]
+                    .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            )
+        }
+    }
+
     var body: some View {
         List {
             if isLoading && artists.isEmpty {
@@ -17,11 +31,15 @@ struct ArtistsView: View {
                 Text(environment.settingsStore.settings.offlineOnly ? "No downloaded artists." : "No artists found.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(artists) { artist in
-                    NavigationLink {
-                        ArtistDetailView(artist: artist)
-                    } label: {
-                        ArtistListRowView(artist: artist)
+                ForEach(groupedArtists, id: \.key) { section in
+                    Section(section.key) {
+                        ForEach(section.artists) { artist in
+                            NavigationLink {
+                                ArtistDetailView(artist: artist)
+                            } label: {
+                                ArtistListRowView(artist: artist)
+                            }
+                        }
                     }
                 }
             }
@@ -48,6 +66,79 @@ struct ArtistsView: View {
         }
         isLoading = false
     }
+
+    private func sectionKey(for name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let scalar = trimmed.unicodeScalars.first else {
+            return "#"
+        }
+
+        let uppercase = String(trimmed.prefix(1)).uppercased()
+        if let first = uppercase.first, first >= "A", first <= "Z" {
+            return String(first)
+        }
+
+        if scalar.isHangul {
+            return "한"
+        }
+
+        if scalar.isJapanese {
+            return "あ"
+        }
+
+        return "#"
+    }
+
+    private func sectionOrder(lhs: String, rhs: String) -> Bool {
+        func rank(for key: String) -> (Int, String) {
+            switch key {
+            case "한":
+                return (1, key)
+            case "あ":
+                return (2, key)
+            case "#":
+                return (3, key)
+            default:
+                return (0, key)
+            }
+        }
+
+        let left = rank(for: lhs)
+        let right = rank(for: rhs)
+        if left.0 != right.0 {
+            return left.0 < right.0
+        }
+        return left.1 < right.1
+    }
+}
+
+private extension Unicode.Scalar {
+    var isHangul: Bool {
+        switch value {
+        case 0x1100...0x11FF,
+             0x3130...0x318F,
+             0xA960...0xA97F,
+             0xAC00...0xD7AF,
+             0xD7B0...0xD7FF:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isJapanese: Bool {
+        switch value {
+        case 0x3040...0x309F,
+             0x30A0...0x30FF,
+             0x31F0...0x31FF,
+             0x3400...0x4DBF,
+             0x4E00...0x9FFF,
+             0xFF66...0xFF9D:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 struct ArtistListRowView: View {
@@ -68,22 +159,11 @@ struct ArtistListRowView: View {
     }
 
     private func loadArtwork() async {
-        if let coverArtID = cachedCoverArtID() {
-            artworkURL = coverArtURL(for: coverArtID)
+        if let albumID = cachedAlbumID(), let coverArtID = cachedCoverArtID() {
+            artworkURL = preferredCoverArtURL(environment: environment, albumID: albumID, coverArtID: coverArtID)
             return
         }
-
-        guard !environment.settingsStore.settings.offlineOnly else {
-            artworkURL = nil
-            return
-        }
-
-        do {
-            let albums = try await environment.repository.artistAlbums(artistID: artist.id)
-            artworkURL = coverArtURL(for: albums.first?.coverArtID)
-        } catch {
-            artworkURL = nil
-        }
+        artworkURL = nil
     }
 
     private func cachedCoverArtID() -> String? {
@@ -97,12 +177,15 @@ struct ArtistListRowView: View {
             .coverArtID
     }
 
-    private func coverArtURL(for coverArtID: String?) -> URL? {
-        do {
-            return try environment.makeClient().coverArtURL(for: coverArtID)
-        } catch {
-            return nil
+    private func cachedAlbumID() -> String? {
+        if let cachedAlbum = environment.repository.cachedSnapshot.albumsByArtist[artist.id]?.first {
+            return cachedAlbum.id
         }
+
+        return environment.downloadManager.downloadedRecords()
+            .first(where: { $0.album.artistID == artist.id })?
+            .album
+            .id
     }
 }
 
@@ -132,7 +215,7 @@ struct ArtistDetailView: View {
                         AlbumRowView(
                             album: album,
                             isDownloaded: environment.downloadManager.hasLocalContent(albumID: album.id),
-                            artworkURL: coverArtURL(for: album.coverArtID),
+                            artworkURL: preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID),
                             isCurrentPlaying: environment.playbackCoordinator.currentAlbum?.id == album.id
                         )
                     }
@@ -159,11 +242,4 @@ struct ArtistDetailView: View {
         isLoading = false
     }
 
-    private func coverArtURL(for coverArtID: String?) -> URL? {
-        do {
-            return try environment.makeClient().coverArtURL(for: coverArtID)
-        } catch {
-            return nil
-        }
-    }
 }

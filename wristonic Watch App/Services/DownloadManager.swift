@@ -43,6 +43,13 @@ final class DownloadManager: ObservableObject {
             updated.downloadedTracks = updated.downloadedTracks.filter { downloadedTrack in
                 fileManager.fileExists(atPath: localFileURL(for: downloadedTrack).path)
             }
+            if let relativePath = updated.localCoverArtRelativePath {
+                let coverArtURL = downloadsDirectory.appendingPathComponent(relativePath, isDirectory: false)
+                if !fileManager.fileExists(atPath: coverArtURL.path) {
+                    updated.localCoverArtRelativePath = nil
+                    updated.coverArtBytes = 0
+                }
+            }
             if updated.downloadedTracks.isEmpty && updated.state.status == .downloaded {
                 updated.state = .notDownloaded
             }
@@ -76,6 +83,14 @@ final class DownloadManager: ObservableObject {
         return localFileURL(for: downloadedTrack)
     }
 
+    func localCoverArtURL(for albumID: String) -> URL? {
+        guard let relativePath = records.first(where: { $0.album.id == albumID })?.localCoverArtRelativePath else {
+            return nil
+        }
+        let url = downloadsDirectory.appendingPathComponent(relativePath, isDirectory: false)
+        return fileManager.fileExists(atPath: url.path) ? url : nil
+    }
+
     func enqueue(albumDetail: AlbumDetail) {
         if let index = records.firstIndex(where: { $0.album.id == albumDetail.album.id }) {
             if records[index].state.status == .downloading || records[index].state.status == .queued {
@@ -89,6 +104,8 @@ final class DownloadManager: ObservableObject {
                 album: albumDetail.album,
                 tracks: albumDetail.tracks,
                 downloadedTracks: [],
+                localCoverArtRelativePath: nil,
+                coverArtBytes: 0,
                 pinned: false,
                 state: DownloadState(status: .queued, progress: 0, errorMessage: nil),
                 downloadedAt: nil,
@@ -114,6 +131,8 @@ final class DownloadManager: ObservableObject {
             try? fileManager.removeItem(at: directory)
         }
         records[index].downloadedTracks = []
+        records[index].localCoverArtRelativePath = nil
+        records[index].coverArtBytes = 0
         records[index].state = .notDownloaded
         records[index].downloadedAt = nil
         records[index].totalBytes = 0
@@ -217,27 +236,63 @@ final class DownloadManager: ObservableObject {
 
         for (offset, track) in record.tracks.enumerated() {
             if downloadedTracks.contains(where: { $0.trackID == track.id }) {
-                records[index].state = DownloadState(status: .downloading, progress: Double(offset + 1) / Double(totalTrackCount), errorMessage: nil)
+                records[index].state = DownloadState(
+                    status: .downloading,
+                    progress: Double(offset + 1) / Double(totalTrackCount),
+                    errorMessage: nil,
+                    transferRateBytesPerSecond: nil
+                )
                 continue
             }
 
-            let downloaded = try await downloadTrack(track, client: client)
+            let albumID = record.album.id
+            let completedTracks = downloadedTracks.count
+            let downloaded = try await downloadTrack(track, client: client) { [weak self] trackProgress, _, bytesPerSecond in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          records.indices.contains(index),
+                          records[index].album.id == albumID else {
+                        return
+                    }
+                    let combinedProgress = (Double(completedTracks) + trackProgress) / Double(totalTrackCount)
+                    records[index].state = DownloadState(
+                        status: .downloading,
+                        progress: combinedProgress,
+                        errorMessage: nil,
+                        transferRateBytesPerSecond: bytesPerSecond
+                    )
+                }
+            }
             downloadedTracks.append(downloaded)
             records[index].downloadedTracks = downloadedTracks
-            records[index].state = DownloadState(status: .downloading, progress: Double(offset + 1) / Double(totalTrackCount), errorMessage: nil)
+            records[index].state = DownloadState(
+                status: .downloading,
+                progress: Double(offset + 1) / Double(totalTrackCount),
+                errorMessage: nil,
+                transferRateBytesPerSecond: nil
+            )
             persist()
+        }
+
+        if let downloadedCoverArt = try await downloadCoverArt(for: record.album, client: client) {
+            records[index].localCoverArtRelativePath = downloadedCoverArt.relativePath
+            records[index].coverArtBytes = downloadedCoverArt.bytes
         }
 
         records[index].downloadedTracks = downloadedTracks
         records[index].downloadedAt = Date()
         records[index].totalBytes = downloadedTracks.reduce(into: Int64(0)) { $0 += $1.bytes }
-        records[index].state = DownloadState(status: .downloaded, progress: 1, errorMessage: nil)
+        records[index].state = DownloadState(status: .downloaded, progress: 1, errorMessage: nil, transferRateBytesPerSecond: nil)
         refreshStoragePolicy()
         try enforceStorageCap(projectedAdditionalBytes: 0, excludingAlbumID: nil)
         persist()
     }
 
-    private func downloadTrack(_ track: Track, client: SubsonicClient) async throws -> DownloadedTrackRecord {
+    private func downloadTrack(
+        _ track: Track,
+        client: SubsonicClient,
+        onProgress: @escaping @Sendable (Double, Int64?, Double) -> Void
+    ) async throws -> DownloadedTrackRecord {
         let candidates = client.streamCandidates(for: track, preferTranscoding: true)
         guard !candidates.isEmpty else {
             throw SubsonicClientError.unsupportedMediaType
@@ -246,7 +301,15 @@ final class DownloadManager: ObservableObject {
         var lastError: Error?
         for candidate in candidates {
             do {
-                let temporaryURL = try await BackgroundDownloadService.shared.download(for: candidate.request)
+                let temporaryURL = try await BackgroundDownloadService.shared.download(for: candidate.request) { totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond in
+                    let progress: Double
+                    if totalBytesExpectedToWrite > 0 {
+                        progress = min(max(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite), 0), 1)
+                    } else {
+                        progress = 0
+                    }
+                    onProgress(progress, totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil, bytesPerSecond)
+                }
                 let albumDirectory = try self.albumDirectory(albumID: track.albumID, createIfNeeded: true)
                 let fileName = "\(track.trackNumber)-\(track.id).\(candidate.fileExtension)"
                 let destinationURL = albumDirectory.appendingPathComponent(fileName, isDirectory: false)
@@ -266,6 +329,23 @@ final class DownloadManager: ObservableObject {
             }
         }
         throw lastError ?? SubsonicClientError.unsupportedMediaType
+    }
+
+    private func downloadCoverArt(for album: AlbumSummary, client: SubsonicClient) async throws -> (relativePath: String, bytes: Int64)? {
+        guard let coverArtURL = client.coverArtURL(for: album.coverArtID) else {
+            return nil
+        }
+
+        let temporaryURL = try await BackgroundDownloadService.shared.download(for: URLRequest(url: coverArtURL))
+        let albumDirectory = try self.albumDirectory(albumID: album.id, createIfNeeded: true)
+        let destinationURL = albumDirectory.appendingPathComponent("coverart", isDirectory: false)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+        let attributes = try fileManager.attributesOfItem(atPath: destinationURL.path)
+        let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        return (relativePath: "\(album.id)/coverart", bytes: fileSize)
     }
 
     private func enforceStorageCap(projectedAdditionalBytes: Int64, excludingAlbumID: String?) throws {

@@ -13,6 +13,8 @@ final class AppEnvironment: ObservableObject {
     private let transportFactory: (ServerConfiguration) -> Transporting
     private let networkMonitor: NetworkMonitor
     private var cancellables = Set<AnyCancellable>()
+    private var cachedClientConfiguration: ServerConfiguration?
+    private var cachedClient: SubsonicClient?
 
     init(
         settingsStore: SettingsStore,
@@ -48,6 +50,8 @@ final class AppEnvironment: ObservableObject {
         let playbackScrobbleStore = JSONFileStore<[PendingPlaybackScrobble]>(url: try AppPaths.storeFile(named: "playback-scrobbles.json"))
         let downloadsDirectory = try AppPaths.downloadsDirectory()
         let playbackCacheDirectory = try AppPaths.playbackCacheDirectory()
+        let coverArtCacheDirectory = try AppPaths.coverArtCacheDirectory()
+        CoverArtStore.shared.configure(cacheDirectory: coverArtCacheDirectory)
 
         let transportFactory: (ServerConfiguration) -> Transporting = { configuration in
             URLSessionTransport(
@@ -140,8 +144,11 @@ final class AppEnvironment: ObservableObject {
         let playbackScrobbleStore = JSONFileStore<[PendingPlaybackScrobble]>(url: tempRoot.appendingPathComponent("playback-scrobbles.json"))
         let downloadsDirectory = tempRoot.appendingPathComponent("downloads", isDirectory: true)
         let playbackCacheDirectory = tempRoot.appendingPathComponent("playback-cache", isDirectory: true)
+        let coverArtCacheDirectory = tempRoot.appendingPathComponent("cover-art-cache", isDirectory: true)
         try FileManager.default.createDirectory(at: downloadsDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: playbackCacheDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: coverArtCacheDirectory, withIntermediateDirectories: true)
+        CoverArtStore.shared.configure(cacheDirectory: coverArtCacheDirectory)
 
         if ProcessInfo.processInfo.environment["WRISTONIC_PRESEED_DOWNLOADS"] == "1" {
             let albumDirectory = downloadsDirectory.appendingPathComponent("album-1", isDirectory: true)
@@ -263,7 +270,13 @@ final class AppEnvironment: ObservableObject {
 
     func makeClient() throws -> SubsonicClient {
         let configuration = try settingsStore.buildServerConfiguration()
-        return SubsonicClient(configuration: configuration, transport: transportFactory(configuration))
+        if let cachedClient, cachedClientConfiguration == configuration {
+            return cachedClient
+        }
+        let client = SubsonicClient(configuration: configuration, transport: transportFactory(configuration))
+        cachedClientConfiguration = configuration
+        cachedClient = client
+        return client
     }
 
     private func bindChildObjects() {

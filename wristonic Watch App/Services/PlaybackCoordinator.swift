@@ -13,6 +13,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var isRepeatingAlbum = false
     @Published var lastError: String?
 
     private let player = AVPlayer()
@@ -128,6 +129,11 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         currentTrack?.id == track.id
     }
 
+    func toggleRepeatAlbum() {
+        isRepeatingAlbum.toggle()
+        refreshNowPlayingInfo()
+    }
+
     private func playCurrentTrack() async {
         guard let track = queue[safe: currentIndex] else { return }
         currentTrack = track
@@ -222,8 +228,13 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             currentIndex += 1
             await playCurrentTrack()
         } else {
-            isPlaying = false
-            refreshNowPlayingInfo()
+            if isRepeatingAlbum, !queue.isEmpty {
+                currentIndex = 0
+                await playCurrentTrack()
+            } else {
+                isPlaying = false
+                refreshNowPlayingInfo()
+            }
         }
     }
 
@@ -270,7 +281,9 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             MPMediaItemPropertyArtist: track.artistName,
             MPMediaItemPropertyAlbumTitle: track.albumName,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackQueueIndex: currentIndex,
+            MPNowPlayingInfoPropertyPlaybackQueueCount: queue.count
         ]
 
         if duration > 0 {
@@ -299,7 +312,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         nowPlayingArtworkID = coverArtID
         nowPlayingArtwork = nil
 
-        guard let coverArtURL = try? clientProvider().coverArtURL(for: coverArtID) else {
+        guard let client = try? clientProvider(),
+              let coverArtURL = client.coverArtURL(for: coverArtID) else {
             refreshNowPlayingInfo()
             return
         }
@@ -307,7 +321,12 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard nowPlayingArtworkID == coverArtID else { return }
-            guard let image = await CoverArtStore.shared.uiImage(for: coverArtURL) else {
+            guard let image = await CoverArtStore.shared.uiImage(for: coverArtURL, loader: { url in
+                if url.isFileURL {
+                    return try Data(contentsOf: url)
+                }
+                return try await client.data(for: URLRequest(url: url)).0
+            }) else {
                 refreshNowPlayingInfo()
                 return
             }
