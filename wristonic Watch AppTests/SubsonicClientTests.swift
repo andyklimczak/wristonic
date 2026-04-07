@@ -30,6 +30,17 @@ final class SubsonicClientTests: XCTestCase {
         XCTAssertEqual(queryItems["f"], "json")
     }
 
+    func testAlbumListRequestSupportsRecentlyPlayedSortMode() async throws {
+        let transport = RecordingTransport()
+        transport.dataResponses["getAlbumList2"] = Data(DemoMode.albumListPayload.utf8)
+
+        _ = try await makeClient(using: transport).albums(sortMode: .recentlyPlayed)
+
+        let components = URLComponents(url: try XCTUnwrap(transport.requests.last?.url), resolvingAgainstBaseURL: false)
+        let queryItems = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(queryItems["type"], "recent")
+    }
+
     func testStreamCandidatesPreferTranscodedThenOriginal() throws {
         let client = try makeClient()
         let track = Track(
@@ -89,5 +100,19 @@ final class SubsonicClientTests: XCTestCase {
         let components = URLComponents(url: try XCTUnwrap(transport.requests.last?.url), resolvingAgainstBaseURL: false)
         let queryItems = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
         XCTAssertEqual(queryItems["submission"], "false")
+    }
+
+    func testInternetRadioStationsDecodePayload() async throws {
+        let transport = RecordingTransport()
+        transport.dataResponses["getInternetRadioStations"] = Data(DemoMode.internetRadioStationsPayload.utf8)
+
+        let stations = try await makeClient(using: transport).internetRadioStations()
+
+        XCTAssertEqual(stations.count, 1)
+        XCTAssertEqual(stations.first?.id, "radio-1")
+        XCTAssertEqual(stations.first?.name, "Demo Radio")
+        XCTAssertEqual(stations.first?.streamURL.absoluteString, "https://demo.navidrome.local/radio/demo.mp3")
+        XCTAssertEqual(stations.first?.homePageURL?.host(), "demo.navidrome.local")
+        XCTAssertEqual(stations.first?.coverArtID, "cover-1")
     }
 }

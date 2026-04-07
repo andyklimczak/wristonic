@@ -8,9 +8,9 @@ final class CoverArtStore {
     static let shared = CoverArtStore()
 
     private let cache = NSCache<NSURL, UIImage>()
-    private let maximumPixelSize: CGFloat = 192
+    private let maximumPixelSize: CGFloat = 128
     private var inFlightTasks: [NSURL: Task<UIImage?, Never>] = [:]
-    private let maxConcurrentLoads = 3
+    private let maxConcurrentLoads = 2
     private var activeLoads = 0
     private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
     private let fileManager: FileManager
@@ -19,8 +19,8 @@ final class CoverArtStore {
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        cache.countLimit = 40
-        cache.totalCostLimit = 6_000_000
+        cache.countLimit = 24
+        cache.totalCostLimit = 3_000_000
     }
 
     func configure(cacheDirectory: URL, diskCacheLimitBytes: Int64 = 20_000_000) {
@@ -56,8 +56,14 @@ final class CoverArtStore {
                     self.releasePermit()
                 }
             }
+            if Task.isCancelled {
+                return nil
+            }
             do {
                 let data = try await loader(url)
+                if Task.isCancelled {
+                    return nil
+                }
                 guard let image = self.processedImage(from: data) else { return nil }
                 return image
             } catch {
@@ -111,7 +117,7 @@ final class CoverArtStore {
     private func processedImage(from data: Data) -> UIImage? {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, options) else {
-            return nil
+            return UIImage(data: data)
         }
         let downsampleOptions = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -119,10 +125,10 @@ final class CoverArtStore {
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize
         ] as CFDictionary
-        guard let imageRef = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) else {
-            return nil
+        if let imageRef = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) {
+            return UIImage(cgImage: imageRef)
         }
-        return UIImage(cgImage: imageRef)
+        return UIImage(data: data)
     }
 
     private func imageCost(_ image: UIImage) -> Int {

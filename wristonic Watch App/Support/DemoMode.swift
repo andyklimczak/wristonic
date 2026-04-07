@@ -143,6 +143,26 @@ struct DemoMode {
         }
         """
     ]
+
+    static let internetRadioStationsPayload = """
+    {
+      "subsonic-response": {
+        "status": "ok",
+        "version": "1.16.1",
+        "internetRadioStations": {
+          "internetRadioStation": [
+            {
+              "id": "radio-1",
+              "name": "Demo Radio",
+              "streamUrl": "https://demo.navidrome.local/radio/demo.mp3",
+              "homePageUrl": "https://demo.navidrome.local",
+              "coverArt": "cover-1"
+            }
+          ]
+        }
+      }
+    }
+    """
 }
 
 final class DemoTransport: Transporting {
@@ -180,6 +200,8 @@ final class DemoTransport: Transporting {
             string = DemoMode.albumPayloads[queryItems["id"] ?? ""] ?? DemoMode.albumPayloads["album-1"]!
         case "getAlbumList2":
             string = DemoMode.albumListPayload
+        case "getInternetRadioStations":
+            string = DemoMode.internetRadioStationsPayload
         case "getCoverArt":
             return Data()
         case "scrobble":

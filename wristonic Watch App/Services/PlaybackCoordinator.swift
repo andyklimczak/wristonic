@@ -8,9 +8,11 @@ import UIKit
 final class PlaybackCoordinator: NSObject, ObservableObject {
     @Published private(set) var currentTrack: Track?
     @Published private(set) var currentAlbum: AlbumSummary?
+    @Published private(set) var currentRadioStation: InternetRadioStation?
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int = 0
     @Published private(set) var isPlaying = false
+    @Published private(set) var isBuffering = false
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var isRepeatingAlbum = false
@@ -57,20 +59,51 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     func play(albumDetail: AlbumDetail, startAt index: Int) async {
+        currentRadioStation = nil
         currentAlbum = albumDetail.album
         queue = albumDetail.tracks
         currentIndex = min(max(index, 0), max(albumDetail.tracks.count - 1, 0))
         await playCurrentTrack()
     }
 
+    func play(radioStation: InternetRadioStation) {
+        finalizePlaybackRecord()
+        playbackCacheManager.cancelPrefetch()
+        currentTrack = nil
+        currentAlbum = nil
+        currentRadioStation = radioStation
+        queue = []
+        currentIndex = 0
+        elapsed = 0
+        duration = 0
+        currentTrackListenSeconds = 0
+        currentSourceCandidates = []
+        candidateIndex = 0
+        lastError = nil
+        updateArtworkIfNeeded()
+
+        let item = AVPlayerItem(url: radioStation.streamURL)
+        item.preferredForwardBufferDuration = 1
+        player.automaticallyWaitsToMinimizeStalling = false
+        player.replaceCurrentItem(with: item)
+        activateAudioSession()
+        player.play()
+        isPlaying = player.timeControlStatus == .playing
+        isBuffering = !isPlaying
+        refreshNowPlayingInfo()
+    }
+
     func togglePlayback() {
-        if isPlaying {
+        if isPlaying || isBuffering {
             player.pause()
             isPlaying = false
-        } else {
+            isBuffering = false
+        } else if currentTrack != nil || currentRadioStation != nil {
             activateAudioSession()
             player.play()
-            isPlaying = true
+            let status = player.timeControlStatus
+            isPlaying = status == .playing
+            isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
         }
         refreshNowPlayingInfo()
     }
@@ -82,9 +115,11 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.replaceCurrentItem(with: nil)
         currentTrack = nil
         currentAlbum = nil
+        currentRadioStation = nil
         queue = []
         currentIndex = 0
         isPlaying = false
+        isBuffering = false
         elapsed = 0
         duration = 0
         currentTrackListenSeconds = 0
@@ -107,6 +142,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     func skipForward() async {
+        guard currentRadioStation == nil else { return }
         guard currentIndex + 1 < queue.count else { return }
         finalizePlaybackRecord()
         currentIndex += 1
@@ -114,6 +150,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     func skipBackward() async {
+        guard currentRadioStation == nil else { return }
         if elapsed > 5 {
             await player.seek(to: .zero)
             refreshNowPlayingInfo()
@@ -130,6 +167,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     func toggleRepeatAlbum() {
+        guard currentRadioStation == nil else { return }
         isRepeatingAlbum.toggle()
         refreshNowPlayingInfo()
     }
@@ -148,6 +186,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         } else if settingsStore.settings.offlineOnly {
             lastError = "This track is not downloaded."
             isPlaying = false
+            isBuffering = false
             return
         } else {
             do {
@@ -155,6 +194,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             } catch {
                 lastError = error.localizedDescription
                 isPlaying = false
+                isBuffering = false
                 return
             }
         }
@@ -187,10 +227,13 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             return
         }
         let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 0
+        player.automaticallyWaitsToMinimizeStalling = true
         player.replaceCurrentItem(with: item)
         activateAudioSession()
         player.play()
         isPlaying = true
+        isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
         playbackReportingManager.reportNowPlaying(track: track)
         playbackReportingManager.flushIfNeeded(force: false)
         refreshNowPlayingInfo()
@@ -201,13 +244,14 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             guard let self else { return }
             let nextElapsed = currentTime.seconds.isFinite ? currentTime.seconds : 0
             let nextDuration = player.currentItem?.duration.seconds.isFinite == true ? player.currentItem?.duration.seconds ?? 0 : 0
-            let playing = player.timeControlStatus == .playing
+            let timeControlStatus = player.timeControlStatus
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 elapsed = nextElapsed
                 duration = nextDuration
                 currentTrackListenSeconds = max(currentTrackListenSeconds, nextElapsed)
-                isPlaying = playing
+                isPlaying = timeControlStatus == .playing
+                isBuffering = timeControlStatus == .waitingToPlayAtSpecifiedRate
                 refreshNowPlayingInfo()
             }
         }
@@ -223,6 +267,12 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     private func handleTrackFinished() async {
+        guard currentRadioStation == nil else {
+            isPlaying = false
+            isBuffering = false
+            refreshNowPlayingInfo()
+            return
+        }
         finalizePlaybackRecord()
         if currentIndex + 1 < queue.count {
             currentIndex += 1
@@ -233,6 +283,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 await playCurrentTrack()
             } else {
                 isPlaying = false
+                isBuffering = false
                 refreshNowPlayingInfo()
             }
         }
@@ -271,6 +322,22 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     private func refreshNowPlayingInfo() {
+        if let station = currentRadioStation {
+            var info: [String: Any] = [
+                MPMediaItemPropertyTitle: station.name,
+                MPMediaItemPropertyArtist: "Internet Radio",
+                MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
+                MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+            ]
+
+            if let nowPlayingArtwork {
+                info[MPMediaItemPropertyArtwork] = nowPlayingArtwork
+            }
+
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            return
+        }
+
         guard let track = currentTrack else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
@@ -298,7 +365,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     private func updateArtworkIfNeeded() {
-        guard let coverArtID = currentAlbum?.coverArtID else {
+        guard let coverArtID = currentAlbum?.coverArtID ?? currentRadioStation?.coverArtID else {
             nowPlayingArtworkID = nil
             nowPlayingArtwork = nil
             refreshNowPlayingInfo()
@@ -338,11 +405,13 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     @objc
     private func handlePlayCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard currentTrack != nil else { return .commandFailed }
-        if !isPlaying {
+        guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
+        if !isPlaying && !isBuffering {
             activateAudioSession()
             player.play()
-            isPlaying = true
+            let status = player.timeControlStatus
+            isPlaying = status == .playing
+            isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
             refreshNowPlayingInfo()
         }
         return .success
@@ -350,10 +419,11 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     @objc
     private func handlePauseCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard currentTrack != nil else { return .commandFailed }
-        if isPlaying {
+        guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
+        if isPlaying || isBuffering {
             player.pause()
             isPlaying = false
+            isBuffering = false
             refreshNowPlayingInfo()
         }
         return .success
@@ -361,6 +431,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     @objc
     private func handleNextTrackCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        guard currentRadioStation == nil else { return .commandFailed }
         guard currentIndex + 1 < queue.count else { return .commandFailed }
         Task { await skipForward() }
         return .success
@@ -368,6 +439,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     @objc
     private func handlePreviousTrackCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        guard currentRadioStation == nil else { return .commandFailed }
         guard !queue.isEmpty else { return .commandFailed }
         Task { await skipBackward() }
         return .success
@@ -375,7 +447,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     @objc
     private func handleTogglePlayPauseCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard currentTrack != nil else { return .commandFailed }
+        guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
         togglePlayback()
         return .success
     }

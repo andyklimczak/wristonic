@@ -7,7 +7,47 @@ struct NowPlayingView: View {
 
     var body: some View {
         List {
-            if let track = environment.playbackCoordinator.currentTrack {
+            if let station = environment.playbackCoordinator.currentRadioStation {
+                Section {
+                    VStack(alignment: .center, spacing: 10) {
+                        ArtworkView(
+                            url: radioCoverArtURL(for: station.coverArtID),
+                            dimension: 96
+                        )
+
+                        VStack(alignment: .center, spacing: 3) {
+                            Text(station.name)
+                                .font(.headline)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text("Internet Radio")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            if environment.playbackCoordinator.isBuffering {
+                                Label("Buffering...", systemImage: "dot.radiowaves.left.and.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            if let homePageURL = station.homePageURL {
+                                Text(homePageURL.host() ?? homePageURL.absoluteString)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    NowPlayingControlsView()
+                }
+            } else if let track = environment.playbackCoordinator.currentTrack {
                 Section {
                     VStack(alignment: .center, spacing: 10) {
                         ArtworkView(
@@ -61,14 +101,16 @@ struct NowPlayingView: View {
                 }
 
                 Section("Controls") {
-                    Button(environment.playbackCoordinator.isRepeatingAlbum ? "Repeat Album On" : "Repeat Album Off") {
-                        environment.playbackCoordinator.toggleRepeatAlbum()
-                    }
-                    Button("Next Track") {
-                        Task { await environment.playbackCoordinator.skipForward() }
-                    }
-                    Button("Previous Track") {
-                        Task { await environment.playbackCoordinator.skipBackward() }
+                    if environment.playbackCoordinator.currentRadioStation == nil {
+                        Button(environment.playbackCoordinator.isRepeatingAlbum ? "Repeat Album On" : "Repeat Album Off") {
+                            environment.playbackCoordinator.toggleRepeatAlbum()
+                        }
+                        Button("Next Track") {
+                            Task { await environment.playbackCoordinator.skipForward() }
+                        }
+                        Button("Previous Track") {
+                            Task { await environment.playbackCoordinator.skipBackward() }
+                        }
                     }
                     if environment.playbackCoordinator.currentAlbum != nil {
                         Button("Go To Album") {
@@ -116,6 +158,14 @@ struct NowPlayingView: View {
             return nil
         }
         return preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID)
+    }
+
+    private func radioCoverArtURL(for coverArtID: String?) -> URL? {
+        do {
+            return try environment.makeClient().coverArtURL(for: coverArtID)
+        } catch {
+            return nil
+        }
     }
 
     private func timeString(_ time: TimeInterval) -> String {

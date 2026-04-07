@@ -101,6 +101,20 @@ final class LibraryRepository: ObservableObject {
         }
     }
 
+    func internetRadioStations(forceRefresh: Bool = false) async throws -> [InternetRadioStation] {
+        if settingsStore.settings.offlineOnly {
+            return []
+        }
+        if !forceRefresh, !cachedSnapshot.internetRadioStations.isEmpty {
+            return cachedSnapshot.internetRadioStations
+        }
+        let stations = try await clientProvider().internetRadioStations()
+        cachedSnapshot.internetRadioStations = stations
+        cachedSnapshot.lastUpdatedAt = Date()
+        try? await cacheStore.save(cachedSnapshot)
+        return stations
+    }
+
     private func offlineArtists() -> [ArtistSummary] {
         let grouped = Dictionary(grouping: downloadRecordsProvider().filter(\.hasDownloadedContent), by: \.album.artistID)
         return grouped.map { artistID, albums in
@@ -123,6 +137,11 @@ final class LibraryRepository: ObservableObject {
             let records = downloadRecordsProvider().filter(\.hasDownloadedContent)
             return records.sorted {
                 ($0.downloadedAt ?? .distantPast) > ($1.downloadedAt ?? .distantPast)
+            }.map(\.album)
+        case .recentlyPlayed:
+            let records = downloadRecordsProvider().filter(\.hasDownloadedContent)
+            return records.sorted {
+                ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast)
             }.map(\.album)
         }
     }

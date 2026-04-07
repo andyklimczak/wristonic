@@ -32,6 +32,10 @@ struct SettingsView: View {
                 Toggle("Offline Only", isOn: offlineOnlyBinding)
             }
 
+            Section("UI") {
+                Toggle("Show Internet Radio", isOn: showInternetRadioBinding)
+            }
+
             Section("Storage") {
                 NavigationLink {
                     StorageSettingsView()
@@ -47,8 +51,6 @@ struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-
-            NowPlayingLinkSection()
         }
         .navigationTitle("Settings")
         .onChange(of: environment.settingsStore.settings) { _, _ in
@@ -67,6 +69,13 @@ struct SettingsView: View {
         Binding(
             get: { environment.settingsStore.settings.offlineOnly },
             set: { environment.settingsStore.settings.offlineOnly = $0 }
+        )
+    }
+
+    private var showInternetRadioBinding: Binding<Bool> {
+        Binding(
+            get: { environment.settingsStore.settings.showInternetRadio },
+            set: { environment.settingsStore.settings.showInternetRadio = $0 }
         )
     }
 }

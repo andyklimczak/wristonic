@@ -104,6 +104,16 @@ final class SubsonicClient {
         }
     }
 
+    func internetRadioStations() async throws -> [InternetRadioStation] {
+        let root = try await requestDictionary(path: "getInternetRadioStations", timeoutInterval: 8)
+        guard let container = root["internetRadioStations"] as? [String: Any] else {
+            throw SubsonicClientError.missingPayload("internetRadioStations")
+        }
+        return Self.dictionaryArray(from: container["internetRadioStation"])
+            .compactMap(Self.parseInternetRadioStation)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     func coverArtURL(for coverArtID: String?) -> URL? {
         guard let coverArtID, !coverArtID.isEmpty else {
             return nil
@@ -158,9 +168,13 @@ final class SubsonicClient {
         )
     }
 
-    private func requestDictionary(path: String, queryItems: [URLQueryItem] = []) async throws -> [String: Any] {
+    private func requestDictionary(path: String, queryItems: [URLQueryItem] = [], timeoutInterval: TimeInterval? = nil) async throws -> [String: Any] {
         let url = authenticatedURL(path: path, queryItems: queryItems)
-        let (data, _) = try await transport.data(for: URLRequest(url: url))
+        var request = URLRequest(url: url)
+        if let timeoutInterval {
+            request.timeoutInterval = timeoutInterval
+        }
+        let (data, _) = try await transport.data(for: request)
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let root = json["subsonic-response"] as? [String: Any]
@@ -234,6 +248,23 @@ final class SubsonicClient {
             contentType: stringValue(from: dictionary["contentType"]),
             suffix: stringValue(from: dictionary["suffix"]),
             path: stringValue(from: dictionary["path"])
+        )
+    }
+
+    private static func parseInternetRadioStation(_ dictionary: [String: Any]) -> InternetRadioStation? {
+        guard
+            let streamURLString = stringValue(from: dictionary["streamUrl"]),
+            let streamURL = URL(string: streamURLString)
+        else {
+            return nil
+        }
+        let homePageURL = stringValue(from: dictionary["homePageUrl"]).flatMap(URL.init(string:))
+        return InternetRadioStation(
+            id: stringValue(from: dictionary["id"]) ?? streamURL.absoluteString,
+            name: stringValue(from: dictionary["name"]) ?? "Internet Radio",
+            streamURL: streamURL,
+            homePageURL: homePageURL,
+            coverArtID: stringValue(from: dictionary["coverArt"])
         )
     }
 

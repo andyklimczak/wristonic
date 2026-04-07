@@ -7,12 +7,6 @@ struct AlbumsView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
 
-    private let sortModes: [AlbumSortMode] = [
-        .alphabeticalByName,
-        .random,
-        .recentlyAdded,
-    ]
-
     var body: some View {
         List {
             Section {
@@ -89,6 +83,7 @@ struct AlbumSortSelectionView: View {
             sortRow(for: .alphabeticalByName)
             sortRow(for: .random)
             sortRow(for: .recentlyAdded)
+            sortRow(for: .recentlyPlayed)
         }
         .navigationTitle("Sort")
         .navigationBarTitleDisplayMode(.inline)

@@ -266,6 +266,7 @@ final class AppEnvironment: ObservableObject {
         await playbackReportingManager.load()
         playbackReportingManager.flushIfNeeded(force: false)
         networkMonitor.start()
+        prefetchInternetRadioStations()
     }
 
     func makeClient() throws -> SubsonicClient {
@@ -277,6 +278,18 @@ final class AppEnvironment: ObservableObject {
         cachedClientConfiguration = configuration
         cachedClient = client
         return client
+    }
+
+    private func prefetchInternetRadioStations() {
+        guard settingsStore.canConnect,
+              settingsStore.settings.showInternetRadio,
+              !settingsStore.settings.offlineOnly
+        else {
+            return
+        }
+        Task {
+            _ = try? await repository.internetRadioStations(forceRefresh: true)
+        }
     }
 
     private func bindChildObjects() {

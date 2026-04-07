@@ -25,6 +25,14 @@ struct RootView: View {
                             Label("Albums", systemImage: "square.stack")
                         }
 
+                        if environment.settingsStore.settings.showInternetRadio {
+                            NavigationLink {
+                                InternetRadioView()
+                            } label: {
+                                Label("Internet Radio", systemImage: "dot.radiowaves.left.and.right")
+                            }
+                        }
+
                         NavigationLink {
                             SettingsView()
                         } label: {
