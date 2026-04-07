@@ -17,6 +17,9 @@ struct AlbumDetailView: View {
                 header(albumDetail: albumDetail)
                 actions(albumDetail: albumDetail)
                 tracks(albumDetail: albumDetail)
+            } else if let initialAlbum {
+                header(album: initialAlbum, detailText: summaryDetailText(for: initialAlbum))
+                tracksLoadingSection()
             } else if isLoading {
                 ProgressView()
             } else if let errorMessage {
@@ -25,7 +28,7 @@ struct AlbumDetailView: View {
             }
         }
         .navigationTitle(initialAlbum?.name ?? "Album")
-        .task {
+        .task(id: albumID) {
             await loadAlbum()
         }
         .navigationDestination(isPresented: $showNowPlaying) {
@@ -49,34 +52,41 @@ struct AlbumDetailView: View {
 
     @ViewBuilder
     private func header(albumDetail: AlbumDetail) -> some View {
+        header(album: albumDetail.album, detailText: trackCountText(albumDetail.tracks.count))
+    }
+
+    @ViewBuilder
+    private func header(album: AlbumSummary, detailText: String?) -> some View {
         Section {
             VStack(alignment: .center, spacing: 10) {
                 ArtworkView(
-                    url: preferredCoverArtURL(environment: environment, albumID: albumDetail.album.id, coverArtID: albumDetail.album.coverArtID),
+                    url: preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID),
                     dimension: 96
                 )
 
                 VStack(alignment: .center, spacing: 3) {
                     HStack(spacing: 6) {
-                        DownloadIndicatorView(isVisible: environment.downloadManager.hasLocalContent(albumID: albumDetail.album.id))
-                        Text(albumDetail.album.name)
+                        DownloadIndicatorView(isVisible: environment.downloadManager.hasLocalContent(albumID: album.id))
+                        Text(album.name)
                             .font(.headline)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity)
 
-                    Text(albumDetail.album.artistName)
+                    Text(album.artistName)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(albumDetail.tracks.count) track\(albumDetail.tracks.count == 1 ? "" : "s")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let detailText {
+                        Text(detailText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -130,9 +140,11 @@ struct AlbumDetailView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(track.title)
                                 .lineLimit(1)
-                            Text(track.duration.map { Int($0.formatted()) } != nil ? durationString(track.duration) : "")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            if let duration = track.duration {
+                                Text(durationString(duration))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         Spacer()
                         if environment.downloadManager.localFileURL(for: track) != nil {
@@ -153,7 +165,27 @@ struct AlbumDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private func tracksLoadingSection() -> some View {
+        Section("Tracks") {
+            if let errorMessage {
+                Text(errorMessage)
+                    .foregroundStyle(.red)
+            } else {
+                ProgressView("Loading tracks")
+            }
+        }
+    }
+
     private func loadAlbum() async {
+        if albumDetail?.album.id == albumID {
+            return
+        }
+        if let cachedDetail = environment.repository.cachedSnapshot.albumDetails[albumID] {
+            albumDetail = cachedDetail
+            errorMessage = nil
+            return
+        }
         isLoading = true
         do {
             albumDetail = try await environment.repository.albumDetail(albumID: albumID)
@@ -164,10 +196,17 @@ struct AlbumDetailView: View {
         isLoading = false
     }
 
-    private func durationString(_ duration: TimeInterval?) -> String {
-        guard let duration else { return "" }
+    private func durationString(_ duration: TimeInterval) -> String {
         let total = Int(duration)
         return "\(total / 60):" + String(format: "%02d", total % 60)
+    }
+
+    private func summaryDetailText(for album: AlbumSummary) -> String? {
+        album.songCount > 0 ? trackCountText(album.songCount) : "Loading tracks"
+    }
+
+    private func trackCountText(_ count: Int) -> String {
+        "\(count) track\(count == 1 ? "" : "s")"
     }
 
     private func isCurrentAlbumPlaying(_ albumDetail: AlbumDetail) -> Bool {

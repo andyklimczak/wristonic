@@ -9,6 +9,7 @@ final class LibraryRepository: ObservableObject {
     private let clientProvider: () throws -> SubsonicClient
     private let downloadRecordsProvider: () -> [DownloadRecord]
     private let settingsStore: SettingsStore
+    private var cacheSaveTask: Task<Void, Never>?
 
     init(
         cacheStore: JSONFileStore<CachedLibrarySnapshot>,
@@ -38,7 +39,7 @@ final class LibraryRepository: ObservableObject {
         let artists = try await clientProvider().artists()
         cachedSnapshot.artists = artists
         cachedSnapshot.lastUpdatedAt = Date()
-        try? await cacheStore.save(cachedSnapshot)
+        persistCachedSnapshot()
         return artists
     }
 
@@ -52,7 +53,7 @@ final class LibraryRepository: ObservableObject {
         let albums = try await clientProvider().albums(sortMode: sortMode)
         cachedSnapshot.albumsBySort[sortMode.rawValue] = albums
         cachedSnapshot.lastUpdatedAt = Date()
-        try? await cacheStore.save(cachedSnapshot)
+        persistCachedSnapshot()
         return albums
     }
 
@@ -69,7 +70,7 @@ final class LibraryRepository: ObservableObject {
         let albums = try await clientProvider().albums(for: artistID)
         cachedSnapshot.albumsByArtist[artistID] = albums
         cachedSnapshot.lastUpdatedAt = Date()
-        try? await cacheStore.save(cachedSnapshot)
+        persistCachedSnapshot()
         return albums
     }
 
@@ -91,7 +92,7 @@ final class LibraryRepository: ObservableObject {
             let detail = try await clientProvider().album(id: albumID)
             cachedSnapshot.albumDetails[albumID] = detail
             cachedSnapshot.lastUpdatedAt = Date()
-            try? await cacheStore.save(cachedSnapshot)
+            persistCachedSnapshot()
             return detail
         } catch {
             if let localDetail {
@@ -111,8 +112,17 @@ final class LibraryRepository: ObservableObject {
         let stations = try await clientProvider().internetRadioStations()
         cachedSnapshot.internetRadioStations = stations
         cachedSnapshot.lastUpdatedAt = Date()
-        try? await cacheStore.save(cachedSnapshot)
+        persistCachedSnapshot()
         return stations
+    }
+
+    private func persistCachedSnapshot() {
+        let snapshot = cachedSnapshot
+        let previousTask = cacheSaveTask
+        cacheSaveTask = Task { [cacheStore] in
+            _ = await previousTask?.result
+            try? await cacheStore.save(snapshot)
+        }
     }
 
     private func offlineArtists() -> [ArtistSummary] {

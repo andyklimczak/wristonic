@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import MediaPlayer
 import UIKit
+import WatchKit
 
 @MainActor
 final class PlaybackCoordinator: NSObject, ObservableObject {
@@ -25,12 +26,14 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private let settingsStore: SettingsStore
     private let clientProvider: () throws -> SubsonicClient
     private var timeObserverToken: Any?
+    private var timeControlStatusObserver: NSKeyValueObservation?
     private var itemEndObserver: NSObjectProtocol?
     private var currentTrackListenSeconds: TimeInterval = 0
     private var currentSourceCandidates: [URL] = []
     private var candidateIndex = 0
     private var nowPlayingArtworkID: String?
     private var nowPlayingArtwork: MPMediaItemArtwork?
+    private var shouldPlayAlbumStartHaptic = false
 
     init(
         downloadManager: DownloadManager,
@@ -56,6 +59,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         if let itemEndObserver {
             NotificationCenter.default.removeObserver(itemEndObserver)
         }
+        timeControlStatusObserver?.invalidate()
     }
 
     func play(albumDetail: AlbumDetail, startAt index: Int) async {
@@ -63,6 +67,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         currentAlbum = albumDetail.album
         queue = albumDetail.tracks
         currentIndex = min(max(index, 0), max(albumDetail.tracks.count - 1, 0))
+        shouldPlayAlbumStartHaptic = true
         await playCurrentTrack()
     }
 
@@ -74,6 +79,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         currentRadioStation = radioStation
         queue = []
         currentIndex = 0
+        shouldPlayAlbumStartHaptic = false
         elapsed = 0
         duration = 0
         currentTrackListenSeconds = 0
@@ -118,6 +124,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         currentRadioStation = nil
         queue = []
         currentIndex = 0
+        shouldPlayAlbumStartHaptic = false
         isPlaying = false
         isBuffering = false
         elapsed = 0
@@ -173,7 +180,10 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     private func playCurrentTrack() async {
-        guard let track = queue[safe: currentIndex] else { return }
+        guard let track = queue[safe: currentIndex] else {
+            shouldPlayAlbumStartHaptic = false
+            return
+        }
         currentTrack = track
         lastError = nil
         currentTrackListenSeconds = 0
@@ -187,6 +197,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             lastError = "This track is not downloaded."
             isPlaying = false
             isBuffering = false
+            shouldPlayAlbumStartHaptic = false
             return
         } else {
             do {
@@ -195,6 +206,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 lastError = error.localizedDescription
                 isPlaying = false
                 isBuffering = false
+                shouldPlayAlbumStartHaptic = false
                 return
             }
         }
@@ -224,6 +236,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         guard let url = currentSourceCandidates[safe: candidateIndex] else {
             lastError = "Unable to play \(track.title)."
             isPlaying = false
+            shouldPlayAlbumStartHaptic = false
             return
         }
         let item = AVPlayerItem(url: url)
@@ -234,6 +247,9 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.play()
         isPlaying = true
         isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        if player.timeControlStatus == .playing {
+            playAlbumStartHapticIfNeeded()
+        }
         playbackReportingManager.reportNowPlaying(track: track)
         playbackReportingManager.flushIfNeeded(force: false)
         refreshNowPlayingInfo()
@@ -252,6 +268,19 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 currentTrackListenSeconds = max(currentTrackListenSeconds, nextElapsed)
                 isPlaying = timeControlStatus == .playing
                 isBuffering = timeControlStatus == .waitingToPlayAtSpecifiedRate
+                refreshNowPlayingInfo()
+            }
+        }
+
+        timeControlStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let status = self.player.timeControlStatus
+                isPlaying = status == .playing
+                isBuffering = status == .waitingToPlayAtSpecifiedRate
+                if status == .playing {
+                    playAlbumStartHapticIfNeeded()
+                }
                 refreshNowPlayingInfo()
             }
         }
@@ -278,6 +307,9 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             currentIndex += 1
             await playCurrentTrack()
         } else {
+            if !queue.isEmpty {
+                playAlbumFinishedHaptic()
+            }
             if isRepeatingAlbum, !queue.isEmpty {
                 currentIndex = 0
                 await playCurrentTrack()
@@ -286,6 +318,20 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 isBuffering = false
                 refreshNowPlayingInfo()
             }
+        }
+    }
+
+    private func playAlbumStartHapticIfNeeded() {
+        guard shouldPlayAlbumStartHaptic else { return }
+        shouldPlayAlbumStartHaptic = false
+        WKInterfaceDevice.current().play(.start)
+    }
+
+    private func playAlbumFinishedHaptic() {
+        WKInterfaceDevice.current().play(.click)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(140))
+            WKInterfaceDevice.current().play(.click)
         }
     }
 
