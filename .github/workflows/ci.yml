@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  watchos:
+    name: watchOS Build and Tests
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    env:
+      PROJECT: wristonic.xcodeproj
+      SCHEME: wristonic Watch App
+      RESULT_BUNDLE: UnitTestResults.xcresult
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Validate shared scheme
+        run: xcodebuild -list -project "$PROJECT"
+
+      - name: Build watchOS app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=watchOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Create watchOS simulator destination
+        id: destination
+        run: |
+          set -euo pipefail
+
+          watch_runtime="$(
+            xcrun simctl list runtimes |
+            awk '/watchOS/ && $0 !~ /unavailable/ {
+              for (i = 1; i <= NF; i++) {
+                if ($i ~ /^com\.apple\.CoreSimulator\.SimRuntime\.watchOS/) {
+                  runtime = $i
+                }
+              }
+            } END { print runtime }'
+          )"
+
+          watch_device_type="$(
+            xcrun simctl list devicetypes |
+            sed -n 's/.*(\(com\.apple\.CoreSimulator\.SimDeviceType\.Apple-Watch[^)]*\)).*/\1/p' |
+            tail -n 1
+          )"
+
+          if [ -z "$watch_runtime" ] || [ -z "$watch_device_type" ]; then
+            echo "No available watchOS runtime or Apple Watch device type found." >&2
+            xcrun simctl list runtimes
+            xcrun simctl list devicetypes
+            exit 1
+          fi
+
+          watch_udid="$(xcrun simctl create "CI Apple Watch" "$watch_device_type" "$watch_runtime")"
+          xcrun simctl boot "$watch_udid"
+          xcrun simctl bootstatus "$watch_udid" -b
+
+          xcodebuild -showdestinations -project "$PROJECT" -scheme "$SCHEME"
+          echo "destination=id=$watch_udid" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination '${{ steps.destination.outputs.destination }}' \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            -skip-testing:'wristonic Watch AppUITests' \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Upload unit test result bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchos-unit-test-results
+          path: ${{ env.RESULT_BUNDLE }}
+          if-no-files-found: ignore
