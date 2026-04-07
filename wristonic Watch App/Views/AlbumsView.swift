@@ -2,16 +2,19 @@ import SwiftUI
 
 struct AlbumsView: View {
     @EnvironmentObject private var environment: AppEnvironment
-    @State private var sortMode: AlbumSortMode = .alphabeticalByName
     @State private var albums: [AlbumSummary] = []
     @State private var errorMessage: String?
     @State private var isLoading = false
+
+    private var sortMode: AlbumSortMode {
+        environment.settingsStore.settings.albumSortMode
+    }
 
     var body: some View {
         List {
             Section {
                 NavigationLink {
-                    AlbumSortSelectionView(sortMode: $sortMode)
+                    AlbumSortSelectionView(sortMode: sortModeBinding)
                 } label: {
                     HStack {
                         Text("Albums")
@@ -55,8 +58,8 @@ struct AlbumsView: View {
         .refreshable {
             await loadAlbums(forceRefresh: true)
         }
-        .onChange(of: sortMode) { _, _ in
-            Task { await loadAlbums(forceRefresh: sortMode != .alphabeticalByName) }
+        .onChange(of: environment.settingsStore.settings.albumSortMode) { _, newSortMode in
+            Task { await loadAlbums(forceRefresh: newSortMode != .alphabeticalByName) }
         }
         .onChange(of: environment.settingsStore.settings.offlineOnly) { _, _ in
             Task { await loadAlbums() }
@@ -73,9 +76,20 @@ struct AlbumsView: View {
         }
         isLoading = false
     }
+
+    private var sortModeBinding: Binding<AlbumSortMode> {
+        Binding(
+            get: { environment.settingsStore.settings.albumSortMode },
+            set: { newValue in
+                environment.settingsStore.settings.albumSortMode = newValue
+                Task { await environment.settingsStore.persist() }
+            }
+        )
+    }
 }
 
 struct AlbumSortSelectionView: View {
+    @Environment(\.dismiss) private var dismiss
     @Binding var sortMode: AlbumSortMode
 
     var body: some View {
@@ -92,6 +106,7 @@ struct AlbumSortSelectionView: View {
     private func sortRow(for mode: AlbumSortMode) -> some View {
         Button {
             sortMode = mode
+            dismiss()
         } label: {
             HStack {
                 Text(mode.displayName)

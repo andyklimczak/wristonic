@@ -149,6 +149,8 @@ struct AppSettings: Codable, Equatable {
     var storageCapGB: Int = 8
     var offlineOnly: Bool = false
     var showInternetRadio: Bool = true
+    var albumSortMode: AlbumSortMode = .alphabeticalByName
+    var isRepeatingAlbum: Bool = false
 
     init() {
     }
@@ -161,6 +163,8 @@ struct AppSettings: Codable, Equatable {
         case storageCapGB
         case offlineOnly
         case showInternetRadio
+        case albumSortMode
+        case isRepeatingAlbum
     }
 
     init(from decoder: Decoder) throws {
@@ -172,6 +176,8 @@ struct AppSettings: Codable, Equatable {
         storageCapGB = try container.decodeIfPresent(Int.self, forKey: .storageCapGB) ?? 8
         offlineOnly = try container.decodeIfPresent(Bool.self, forKey: .offlineOnly) ?? false
         showInternetRadio = try container.decodeIfPresent(Bool.self, forKey: .showInternetRadio) ?? true
+        albumSortMode = try container.decodeIfPresent(AlbumSortMode.self, forKey: .albumSortMode) ?? .alphabeticalByName
+        isRepeatingAlbum = try container.decodeIfPresent(Bool.self, forKey: .isRepeatingAlbum) ?? false
     }
 }
 

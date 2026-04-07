@@ -48,6 +48,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         self.settingsStore = settingsStore
         self.clientProvider = clientProvider
         super.init()
+        isRepeatingAlbum = settingsStore.settings.isRepeatingAlbum
         configureObservers()
         configureRemoteCommands()
     }
@@ -176,6 +177,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     func toggleRepeatAlbum() {
         guard currentRadioStation == nil else { return }
         isRepeatingAlbum.toggle()
+        settingsStore.settings.isRepeatingAlbum = isRepeatingAlbum
+        Task { await settingsStore.persist() }
         refreshNowPlayingInfo()
     }
 

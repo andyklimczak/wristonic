@@ -17,6 +17,32 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: data)
 
         XCTAssertTrue(settings.showInternetRadio)
+        XCTAssertEqual(settings.albumSortMode, .alphabeticalByName)
+        XCTAssertFalse(settings.isRepeatingAlbum)
+    }
+
+    func testAlbumSortModeDecodesWhenPresent() throws {
+        let data = Data("""
+        {
+          "albumSortMode": "recentlyPlayed"
+        }
+        """.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(settings.albumSortMode, .recentlyPlayed)
+    }
+
+    func testAlbumRepeatDecodesWhenPresent() throws {
+        let data = Data("""
+        {
+          "isRepeatingAlbum": true
+        }
+        """.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertTrue(settings.isRepeatingAlbum)
     }
 
     func testCachedLibrarySnapshotDefaultsMissingInternetRadioStationsToEmpty() throws {
