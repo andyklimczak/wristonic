@@ -10,6 +10,7 @@ final class DownloadManager: ObservableObject {
     private let historyStore: JSONFileStore<[String: PlaybackHistory]>
     private let settingsStore: SettingsStore
     private let clientProvider: () throws -> SubsonicClient
+    private let downloadService: DownloadServing
     private let fileManager: FileManager
     private let downloadsDirectory: URL
     private var playbackHistory: [String: PlaybackHistory] = [:]
@@ -20,6 +21,7 @@ final class DownloadManager: ObservableObject {
         recordsStore: JSONFileStore<[DownloadRecord]>,
         historyStore: JSONFileStore<[String: PlaybackHistory]>,
         downloadsDirectory: URL,
+        downloadService: DownloadServing? = nil,
         fileManager: FileManager = .default,
         clientProvider: @escaping () throws -> SubsonicClient
     ) {
@@ -27,6 +29,7 @@ final class DownloadManager: ObservableObject {
         self.recordsStore = recordsStore
         self.historyStore = historyStore
         self.downloadsDirectory = downloadsDirectory
+        self.downloadService = downloadService ?? BackgroundDownloadService.shared
         self.fileManager = fileManager
         self.clientProvider = clientProvider
     }
@@ -57,7 +60,9 @@ final class DownloadManager: ObservableObject {
         }
         refreshStoragePolicy()
         persist()
-        startProcessingQueueIfNeeded()
+        if records.contains(where: { $0.state.status == .queued }) {
+            startProcessingQueueIfNeeded()
+        }
     }
 
     func state(for albumID: String) -> DownloadState {
@@ -317,7 +322,7 @@ final class DownloadManager: ObservableObject {
         var lastError: Error?
         for candidate in candidates {
             do {
-                let temporaryURL = try await BackgroundDownloadService.shared.download(for: candidate.request) { totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond in
+                let temporaryURL = try await downloadService.download(for: candidate.request) { totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond in
                     let progress: Double
                     if totalBytesExpectedToWrite > 0 {
                         progress = min(max(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite), 0), 1)
@@ -352,7 +357,7 @@ final class DownloadManager: ObservableObject {
             return nil
         }
 
-        let temporaryURL = try await BackgroundDownloadService.shared.download(for: URLRequest(url: coverArtURL))
+        let temporaryURL = try await downloadService.download(for: URLRequest(url: coverArtURL), onProgress: nil)
         let albumDirectory = try self.albumDirectory(albumID: album.id, createIfNeeded: true)
         let destinationURL = albumDirectory.appendingPathComponent("coverart", isDirectory: false)
         if fileManager.fileExists(atPath: destinationURL.path) {

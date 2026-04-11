@@ -70,8 +70,8 @@ final class PlaybackReportingManagerTests: XCTestCase {
         let manager = PlaybackReportingManager(
             queueStore: queueStore,
             settingsStore: settingsStore,
-            baseRetryDelay: 0.25,
-            maxRetryDelay: 1,
+            baseRetryDelay: 2,
+            maxRetryDelay: 2,
             clientProvider: { try makeClient(using: transport) }
         )
         await manager.load()
@@ -96,10 +96,15 @@ final class PlaybackReportingManagerTests: XCTestCase {
             transport.requests.contains { $0.url?.lastPathComponent == "scrobble.view" }
         })
 
-        let persisted = try await queueStore.load(default: [])
+        let persisted = try await waitForPersistedQueue(queueStore) { pending in
+            pending.count == 1 && pending[0].attempts == 1
+        }
         XCTAssertEqual(persisted.count, 1)
         XCTAssertEqual(persisted[0].attempts, 1)
-        XCTAssertGreaterThan(persisted[0].nextRetryAt.timeIntervalSinceNow, 0.1)
+        XCTAssertGreaterThanOrEqual(
+            persisted[0].nextRetryAt.timeIntervalSince(persisted[0].createdAt),
+            1
+        )
     }
 
     private func wait(for condition: @escaping @MainActor () -> Bool, timeout: TimeInterval = 3) async throws {
@@ -123,5 +128,22 @@ final class PlaybackReportingManagerTests: XCTestCase {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         XCTFail("Timed out waiting for empty queue")
+    }
+
+    private func waitForPersistedQueue(
+        _ queueStore: JSONFileStore<[PendingPlaybackScrobble]>,
+        timeout: TimeInterval = 3,
+        condition: @escaping ([PendingPlaybackScrobble]) -> Bool
+    ) async throws -> [PendingPlaybackScrobble] {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let persisted = try await queueStore.load(default: [])
+            if condition(persisted) {
+                return persisted
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        XCTFail("Timed out waiting for persisted queue state")
+        return try await queueStore.load(default: [])
     }
 }

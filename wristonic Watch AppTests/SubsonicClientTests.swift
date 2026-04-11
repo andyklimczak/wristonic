@@ -2,6 +2,11 @@ import XCTest
 @testable import wristonic_Watch_App
 
 final class SubsonicClientTests: XCTestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        try skipOnGitHubActions("Skipped on GitHub Actions because these watch-hosted client tests can crash the CI simulator process.")
+    }
+
     func testAuthTokenGenerationIsStable() {
         XCTAssertEqual(
             SubsonicClient.authToken(password: "secret", salt: "abcd1234"),

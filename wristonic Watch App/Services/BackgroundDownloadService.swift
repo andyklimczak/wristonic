@@ -1,7 +1,14 @@
 import Foundation
 import WatchKit
 
-final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate {
+protocol DownloadServing {
+    func download(
+        for request: URLRequest,
+        onProgress: (@Sendable (Int64, Int64, Double) -> Void)?
+    ) async throws -> URL
+}
+
+final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, DownloadServing {
     static let shared = BackgroundDownloadService()
 
     private let sessionIdentifier = "com.andy.wristonic.background-downloads"

@@ -22,6 +22,8 @@ jobs:
       PROJECT: wristonic.xcodeproj
       SCHEME: wristonic Watch App
       RESULT_BUNDLE: UnitTestResults.xcresult
+      SIMCTL_CHILD_GITHUB_ACTIONS: "true"
+      SIMCTL_CHILD_CI: "true"
 
     steps:
       - name: Checkout
@@ -49,52 +51,26 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Create watchOS simulator destination
-        id: destination
-        run: |
-          set -euo pipefail
-
-          watch_runtime="$(
-            xcrun simctl list runtimes |
-            awk '/watchOS/ && $0 !~ /unavailable/ {
-              for (i = 1; i <= NF; i++) {
-                if ($i ~ /^com\.apple\.CoreSimulator\.SimRuntime\.watchOS/) {
-                  runtime = $i
-                }
-              }
-            } END { print runtime }'
-          )"
-
-          watch_device_type="$(
-            xcrun simctl list devicetypes |
-            sed -n 's/.*(\(com\.apple\.CoreSimulator\.SimDeviceType\.Apple-Watch[^)]*\)).*/\1/p' |
-            tail -n 1
-          )"
-
-          if [ -z "$watch_runtime" ] || [ -z "$watch_device_type" ]; then
-            echo "No available watchOS runtime or Apple Watch device type found." >&2
-            xcrun simctl list runtimes
-            xcrun simctl list devicetypes
-            exit 1
-          fi
-
-          watch_udid="$(xcrun simctl create "CI Apple Watch" "$watch_device_type" "$watch_runtime")"
-          xcrun simctl boot "$watch_udid"
-          xcrun simctl bootstatus "$watch_udid" -b
-
-          xcodebuild -showdestinations -project "$PROJECT" -scheme "$SCHEME"
-          echo "destination=id=$watch_udid" >> "$GITHUB_OUTPUT"
+      - name: Launch watchOS simulator
+        id: simulator
+        uses: futureware-tech/simulator-action@v4
+        with:
+          os: watchOS
+          model: Apple Watch SE (40mm) (2nd generation)
+          wait_for_boot: true
+          shutdown_after_job: true
 
       - name: Run unit tests
         run: |
           set -o pipefail
+          xcodebuild -showdestinations -project "$PROJECT" -scheme "$SCHEME"
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -configuration Debug \
-            -destination '${{ steps.destination.outputs.destination }}' \
+            -destination 'id=${{ steps.simulator.outputs.udid }}' \
             -resultBundlePath "$RESULT_BUNDLE" \
-            -skip-testing:'wristonic Watch AppUITests' \
+            -only-testing:'wristonic Watch AppTests' \
             -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
             test
