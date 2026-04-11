@@ -34,11 +34,10 @@ struct ArtworkView: View {
         .frame(width: dimension, height: dimension)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .onChange(of: url) { _, _ in
-            image = nil
-            scheduleLoad()
+            refreshImage()
         }
         .onAppear {
-            scheduleLoad()
+            refreshImage()
         }
         .onDisappear {
             loadTask?.cancel()
@@ -46,9 +45,21 @@ struct ArtworkView: View {
         }
     }
 
-    private func scheduleLoad() {
+    private func refreshImage() {
         loadTask?.cancel()
-        guard image == nil, let url else { return }
+        guard let url else {
+            image = nil
+            return
+        }
+        if let cached = CoverArtStore.shared.cachedImage(for: url) {
+            image = cached
+            return
+        }
+        image = nil
+        scheduleLoad(for: url)
+    }
+
+    private func scheduleLoad(for url: URL) {
         loadTask = Task {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }

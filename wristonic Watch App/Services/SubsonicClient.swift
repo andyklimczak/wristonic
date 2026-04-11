@@ -29,10 +29,12 @@ struct StreamCandidate {
 final class SubsonicClient {
     private let configuration: ServerConfiguration
     private let transport: Transporting
+    private let authSalt: String
 
     init(configuration: ServerConfiguration, transport: Transporting) {
         self.configuration = configuration
         self.transport = transport
+        self.authSalt = Self.randomSalt()
     }
 
     func ping() async throws {
@@ -195,8 +197,7 @@ final class SubsonicClient {
     }
 
     private func authenticatedURL(path: String, queryItems: [URLQueryItem] = []) -> URL {
-        let salt = Self.randomSalt()
-        let token = Self.authToken(password: configuration.password, salt: salt)
+        let token = Self.authToken(password: configuration.password, salt: authSalt)
 
         var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false) ?? URLComponents()
         let trimmedPath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
@@ -204,7 +205,7 @@ final class SubsonicClient {
         components.queryItems = [
             URLQueryItem(name: "u", value: configuration.username),
             URLQueryItem(name: "t", value: token),
-            URLQueryItem(name: "s", value: salt),
+            URLQueryItem(name: "s", value: authSalt),
             URLQueryItem(name: "v", value: "1.16.1"),
             URLQueryItem(name: "c", value: "wristonic"),
             URLQueryItem(name: "f", value: "json")

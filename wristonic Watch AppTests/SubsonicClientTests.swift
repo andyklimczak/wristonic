@@ -41,6 +41,15 @@ final class SubsonicClientTests: XCTestCase {
         XCTAssertEqual(queryItems["type"], "recent")
     }
 
+    func testCoverArtURLIsStableForSameClient() throws {
+        let client = try makeClient()
+
+        let firstURL = try XCTUnwrap(client.coverArtURL(for: "cover-1"))
+        let secondURL = try XCTUnwrap(client.coverArtURL(for: "cover-1"))
+
+        XCTAssertEqual(firstURL, secondURL)
+    }
+
     func testStreamCandidatesPreferTranscodedThenOriginal() throws {
         let client = try makeClient()
         let track = Track(

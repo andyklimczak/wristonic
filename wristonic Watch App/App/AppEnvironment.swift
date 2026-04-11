@@ -320,6 +320,12 @@ final class AppEnvironment: ObservableObject {
             }
             .store(in: &cancellables)
 
+        repository.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
         playbackCoordinator.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()

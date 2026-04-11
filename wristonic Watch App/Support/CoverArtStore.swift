@@ -36,6 +36,13 @@ final class CoverArtStore {
         return Image(uiImage: image)
     }
 
+    func cachedImage(for url: URL) -> Image? {
+        guard let image = cachedUIImage(for: url) else {
+            return nil
+        }
+        return Image(uiImage: image)
+    }
+
     func clear() async {
         inFlightTasks.values.forEach { $0.cancel() }
         inFlightTasks.removeAll()
@@ -56,11 +63,7 @@ final class CoverArtStore {
 
     func uiImage(for url: URL, loader: @escaping (URL) async throws -> Data) async -> UIImage? {
         let key = url as NSURL
-        if let cached = cache.object(forKey: key) {
-            return cached
-        }
-        if let cached = loadDiskCachedImage(for: url) {
-            cache.setObject(cached, forKey: key)
+        if let cached = cachedUIImage(for: url) {
             return cached
         }
         if let task = inFlightTasks[key] {
@@ -99,6 +102,18 @@ final class CoverArtStore {
             }
         }
         return image
+    }
+
+    func cachedUIImage(for url: URL) -> UIImage? {
+        let key = url as NSURL
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+        if let cached = loadDiskCachedImage(for: url) {
+            cache.setObject(cached, forKey: key, cost: imageCost(cached))
+            return cached
+        }
+        return nil
     }
 
     private func loadDiskCachedImage(for url: URL) -> UIImage? {

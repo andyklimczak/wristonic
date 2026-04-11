@@ -61,10 +61,24 @@ struct ArtistsView: View {
         do {
             artists = try await environment.repository.artists(forceRefresh: forceRefresh)
             errorMessage = nil
+            prefetchArtistArtworkIfNeeded()
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func prefetchArtistArtworkIfNeeded() {
+        guard !environment.settingsStore.settings.offlineOnly else {
+            return
+        }
+        let cachedAlbums = environment.repository.cachedSnapshot.albumsBySort[AlbumSortMode.alphabeticalByName.rawValue] ?? []
+        guard cachedAlbums.isEmpty else {
+            return
+        }
+        Task {
+            _ = try? await environment.repository.albums(sortMode: .alphabeticalByName)
+        }
     }
 
     private func sectionKey(for name: String) -> String {
@@ -145,47 +159,33 @@ struct ArtistListRowView: View {
     @EnvironmentObject private var environment: AppEnvironment
     let artist: ArtistSummary
 
-    @State private var artworkURL: URL?
-
     var body: some View {
         ArtistRowView(
             artist: artist,
             hasDownloads: environment.downloadManager.hasDownloadedArtist(artistID: artist.id),
-            artworkURL: artworkURL
+            artworkURL: representativeArtworkURL
         )
-        .task(id: artist.id) {
-            await loadArtwork()
-        }
     }
 
-    private func loadArtwork() async {
-        if let albumID = cachedAlbumID(), let coverArtID = cachedCoverArtID() {
-            artworkURL = preferredCoverArtURL(environment: environment, albumID: albumID, coverArtID: coverArtID)
-            return
+    private var representativeArtworkURL: URL? {
+        guard let album = representativeAlbum else {
+            return nil
         }
-        artworkURL = nil
+        return preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID)
     }
 
-    private func cachedCoverArtID() -> String? {
+    private var representativeAlbum: AlbumSummary? {
         if let cachedAlbum = environment.repository.cachedSnapshot.albumsByArtist[artist.id]?.first {
-            return cachedAlbum.coverArtID
+            return cachedAlbum
         }
-
+        if let cachedAlbum = environment.repository.cachedSnapshot.albumsBySort.values.lazy.compactMap({ albums in
+            albums.first(where: { $0.artistID == artist.id })
+        }).first {
+            return cachedAlbum
+        }
         return environment.downloadManager.downloadedRecords()
             .first(where: { $0.album.artistID == artist.id })?
             .album
-            .coverArtID
-    }
-
-    private func cachedAlbumID() -> String? {
-        if let cachedAlbum = environment.repository.cachedSnapshot.albumsByArtist[artist.id]?.first {
-            return cachedAlbum.id
-        }
-
-        return environment.downloadManager.downloadedRecords()
-            .first(where: { $0.album.artistID == artist.id })?
-            .album
-            .id
     }
 }
 
