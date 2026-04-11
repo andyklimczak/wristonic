@@ -154,6 +154,22 @@ final class DownloadManager: ObservableObject {
         persist()
     }
 
+    func clearAllData() async {
+        processingTask?.cancel()
+        processingTask = nil
+
+        if fileManager.fileExists(atPath: downloadsDirectory.path) {
+            try? fileManager.removeItem(at: downloadsDirectory)
+        }
+        try? fileManager.createDirectory(at: downloadsDirectory, withIntermediateDirectories: true)
+
+        records.removeAll()
+        playbackHistory.removeAll()
+        refreshStoragePolicy()
+        try? await recordsStore.deleteFile()
+        try? await historyStore.deleteFile()
+    }
+
     func togglePin(albumID: String) {
         guard let index = records.firstIndex(where: { $0.album.id == albumID }) else {
             return

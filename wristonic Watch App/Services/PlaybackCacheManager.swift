@@ -37,6 +37,16 @@ final class PlaybackCacheManager {
         warmCacheTask = nil
     }
 
+    func clear() async {
+        cancelPrefetch()
+        if fileManager.fileExists(atPath: cacheDirectory.path) {
+            try? fileManager.removeItem(at: cacheDirectory)
+        }
+        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        records.removeAll()
+        try? await recordsStore.deleteFile()
+    }
+
     func localFileURL(for track: Track) -> URL? {
         guard let index = records.firstIndex(where: { $0.trackID == track.id }) else {
             return nil

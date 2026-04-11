@@ -74,6 +74,13 @@ final class PlaybackReportingManager {
         }
     }
 
+    func clearQueue() async {
+        processingTask?.cancel()
+        processingTask = nil
+        queue.removeAll()
+        try? await queueStore.deleteFile()
+    }
+
     private func processQueue(force: Bool) async {
         defer { processingTask = nil }
 

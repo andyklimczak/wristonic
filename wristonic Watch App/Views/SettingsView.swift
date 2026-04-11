@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @State private var showClearServerConfirmation = false
 
     private let bitrateOptions = [96, 128, 192, 256]
 
@@ -16,11 +17,6 @@ struct SettingsView: View {
                         onSuccess: nil
                     )
                 }
-                Button("Clear Server", role: .destructive) {
-                    environment.settingsStore.clearServerConfiguration()
-                    Task { await environment.settingsStore.persist() }
-                }
-                .disabled(environment.settingsStore.settings.serverURLString.isEmpty && environment.settingsStore.settings.username.isEmpty && environment.settingsStore.password.isEmpty)
             }
 
             Section("Playback") {
@@ -51,10 +47,26 @@ struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Button("Clear Server", role: .destructive) {
+                    showClearServerConfirmation = true
+                }
+            }
         }
         .navigationTitle("Settings")
         .onChange(of: environment.settingsStore.settings) { _, _ in
             Task { await environment.settingsStore.persist() }
+        }
+        .confirmationDialog(
+            "Clear saved server, downloads, and cached data from this watch?",
+            isPresented: $showClearServerConfirmation
+        ) {
+            Button("Clear Server", role: .destructive) {
+                Task { await environment.clearServerData() }
+            }
+            Button("Cancel", role: .cancel) {
+            }
         }
     }
 

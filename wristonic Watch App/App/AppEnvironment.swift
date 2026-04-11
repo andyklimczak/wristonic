@@ -280,6 +280,21 @@ final class AppEnvironment: ObservableObject {
         return client
     }
 
+    func clearServerData() async {
+        playbackCoordinator.stop()
+        cachedClient = nil
+        cachedClientConfiguration = nil
+
+        await repository.clearCache()
+        await downloadManager.clearAllData()
+        await playbackCacheManager.clear()
+        await playbackReportingManager.clearQueue()
+        await CoverArtStore.shared.clear()
+
+        settingsStore.clearServerConfiguration()
+        await settingsStore.persist()
+    }
+
     private func prefetchInternetRadioStations() {
         guard settingsStore.canConnect,
               settingsStore.settings.showInternetRadio,

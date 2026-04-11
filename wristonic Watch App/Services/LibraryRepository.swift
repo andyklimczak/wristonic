@@ -29,6 +29,13 @@ final class LibraryRepository: ObservableObject {
         }
     }
 
+    func clearCache() async {
+        _ = await cacheSaveTask?.result
+        cacheSaveTask = nil
+        cachedSnapshot = .empty
+        try? await cacheStore.deleteFile()
+    }
+
     func artists(forceRefresh: Bool = false) async throws -> [ArtistSummary] {
         if settingsStore.settings.offlineOnly {
             return offlineArtists()

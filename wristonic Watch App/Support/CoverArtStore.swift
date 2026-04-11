@@ -36,6 +36,24 @@ final class CoverArtStore {
         return Image(uiImage: image)
     }
 
+    func clear() async {
+        inFlightTasks.values.forEach { $0.cancel() }
+        inFlightTasks.removeAll()
+        cache.removeAllObjects()
+        waitingContinuations.forEach { $0.resume() }
+        waitingContinuations.removeAll()
+        activeLoads = 0
+
+        guard let cacheDirectory else {
+            return
+        }
+
+        if fileManager.fileExists(atPath: cacheDirectory.path) {
+            try? fileManager.removeItem(at: cacheDirectory)
+        }
+        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+    }
+
     func uiImage(for url: URL, loader: @escaping (URL) async throws -> Data) async -> UIImage? {
         let key = url as NSURL
         if let cached = cache.object(forKey: key) {
