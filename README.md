@@ -6,6 +6,8 @@
 
 App Store: coming soon
 
+Privacy Policy: [PRIVACY.md](PRIVACY.md)
+
 ## Features
 
 - Connect to a Subsonic-compatible server from Apple Watch
