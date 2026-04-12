@@ -55,7 +55,7 @@ jobs:
 
       - name: Launch watchOS simulator
         id: simulator
-        uses: futureware-tech/simulator-action@v4
+        uses: futureware-tech/simulator-action@v5
         with:
           os: watchOS
           model: Apple Watch SE (40mm) (2nd generation)
