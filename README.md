@@ -4,7 +4,7 @@
 
 `wristonic` is a watchOS app for Subsonic-compatible servers such as Navidrome. It is built for quick library browsing, playback control, offline downloads, and lightweight settings directly on Apple Watch.
 
-App Store: [wristonic on the App Store](https://apps.apple.com/us/app/wristonic/id6762027816)
+[![Download on the App Store](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg)](https://apps.apple.com/us/app/wristonic/id6762027816)
 
 If you use the app, App Store reviews are appreciated.
 
