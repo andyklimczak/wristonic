@@ -226,12 +226,18 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             return
         }
 
+        let upcomingIndex = currentIndex + 1
+        guard queue.indices.contains(upcomingIndex) else {
+            playbackCacheManager.cancelPrefetch()
+            return
+        }
+
         let permanentlyDownloadedTrackIDs = Set(
             queue.compactMap { track in
                 downloadManager.localFileURL(for: track) == nil ? nil : track.id
             }
         )
-        playbackCacheManager.primePlaybackQueue(queue, currentIndex: currentIndex, excludingTrackIDs: permanentlyDownloadedTrackIDs)
+        playbackCacheManager.primePlaybackQueue(queue, currentIndex: upcomingIndex, excludingTrackIDs: permanentlyDownloadedTrackIDs)
     }
 
     private func startCurrentCandidate() async {

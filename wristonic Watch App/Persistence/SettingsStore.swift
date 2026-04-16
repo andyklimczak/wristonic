@@ -52,17 +52,11 @@ final class SettingsStore: ObservableObject {
     }
 
     var normalizedURL: URL? {
-        URL(string: normalizedServerAddress)
+        Self.validatedServerURL(from: settings.serverURLString, allowInsecureConnections: settings.allowInsecureConnections)
     }
 
     var normalizedServerAddress: String {
-        let trimmed = settings.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-        if trimmed.contains("://") {
-            return trimmed
-        }
-        let scheme = settings.allowInsecureConnections ? "http://" : "https://"
-        return scheme + trimmed
+        Self.normalizedServerAddress(from: settings.serverURLString, allowInsecureConnections: settings.allowInsecureConnections)
     }
 
     func persist() async {
@@ -86,19 +80,37 @@ final class SettingsStore: ObservableObject {
     }
 
     func buildServerConfiguration() throws -> ServerConfiguration {
-        guard let url = normalizedURL else {
-            throw SettingsError.invalidURL
-        }
-        let username = settings.username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !username.isEmpty, !password.isEmpty else {
-            throw SettingsError.missingCredentials
-        }
-        return ServerConfiguration(
-            baseURL: url,
-            username: username,
+        try Self.buildServerConfiguration(
+            serverAddress: settings.serverURLString,
+            username: settings.username,
             password: password,
             preferredBitrateKbps: settings.preferredBitrateKbps,
             allowInsecureConnections: settings.allowInsecureConnections
+        )
+    }
+
+    static func buildServerConfiguration(
+        serverAddress: String,
+        username: String,
+        password: String,
+        preferredBitrateKbps: Int,
+        allowInsecureConnections: Bool
+    ) throws -> ServerConfiguration {
+        guard let url = validatedServerURL(from: serverAddress, allowInsecureConnections: allowInsecureConnections) else {
+            throw SettingsError.invalidURL
+        }
+
+        let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUsername.isEmpty, !password.isEmpty else {
+            throw SettingsError.missingCredentials
+        }
+
+        return ServerConfiguration(
+            baseURL: url,
+            username: trimmedUsername,
+            password: password,
+            preferredBitrateKbps: preferredBitrateKbps,
+            allowInsecureConnections: allowInsecureConnections
         )
     }
 
@@ -111,6 +123,37 @@ final class SettingsStore: ObservableObject {
         settings.username = ""
         settings.allowInsecureConnections = false
         password = ""
+    }
+
+    static func normalizedServerAddress(from serverAddress: String, allowInsecureConnections: Bool) -> String {
+        let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if trimmed.contains("://") {
+            return trimmed
+        }
+        let scheme = allowInsecureConnections ? "http://" : "https://"
+        return scheme + trimmed
+    }
+
+    static func validatedServerURL(from serverAddress: String, allowInsecureConnections: Bool) -> URL? {
+        let normalizedAddress = normalizedServerAddress(from: serverAddress, allowInsecureConnections: allowInsecureConnections)
+        guard !normalizedAddress.isEmpty else {
+            return nil
+        }
+
+        guard let components = URLComponents(string: normalizedAddress) else {
+            return nil
+        }
+
+        guard let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return nil
+        }
+
+        guard let host = components.host, !host.isEmpty else {
+            return nil
+        }
+
+        return components.url
     }
 }
 

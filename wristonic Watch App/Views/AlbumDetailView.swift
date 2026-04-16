@@ -105,8 +105,20 @@ struct AlbumDetailView: View {
 
             let state = environment.downloadManager.state(for: albumDetail.album.id)
             if state.status == .downloading || state.status == .queued {
-                ProgressView(value: state.progress) {
-                    Text(state.status == .queued ? "Queued" : "Downloading")
+                VStack(alignment: .leading, spacing: 4) {
+                    ProgressView(value: state.progress) {
+                        Text(state.status == .queued ? "Queued" : "Downloading")
+                    }
+
+                    Text(downloadProgressText(for: albumDetail.album.id))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    if let speedText = downloadSpeedText(for: albumDetail.album.id) {
+                        Text(speedText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else {
                 Button(environment.downloadManager.hasLocalContent(albumID: albumDetail.album.id) ? "Redownload Album" : "Download Album") {
@@ -211,5 +223,31 @@ struct AlbumDetailView: View {
 
     private func isCurrentAlbumPlaying(_ albumDetail: AlbumDetail) -> Bool {
         environment.playbackCoordinator.currentAlbum?.id == albumDetail.album.id
+    }
+
+    private func downloadProgressText(for albumID: String) -> String {
+        guard let record = environment.downloadManager.records.first(where: { $0.album.id == albumID }) else {
+            return ""
+        }
+
+        let downloadedCount = record.downloadedTracks.count
+        let totalCount = record.tracks.count
+        guard totalCount > 0 else {
+            return record.state.status == .queued ? "Waiting to start" : "Preparing download"
+        }
+
+        return "\(downloadedCount)/\(totalCount) downloaded"
+    }
+
+    private func downloadSpeedText(for albumID: String) -> String? {
+        guard
+            let record = environment.downloadManager.records.first(where: { $0.album.id == albumID }),
+            let speed = record.state.transferRateBytesPerSecond,
+            speed > 0
+        else {
+            return nil
+        }
+
+        return ByteCountFormatter.string(fromByteCount: Int64(speed), countStyle: .file) + "/s"
     }
 }

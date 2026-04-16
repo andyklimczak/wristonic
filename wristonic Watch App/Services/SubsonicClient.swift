@@ -37,8 +37,8 @@ final class SubsonicClient {
         self.authSalt = Self.randomSalt()
     }
 
-    func ping() async throws {
-        _ = try await requestDictionary(path: "ping")
+    func ping(timeoutInterval: TimeInterval? = nil) async throws {
+        _ = try await requestDictionary(path: "ping", timeoutInterval: timeoutInterval)
     }
 
     func artists() async throws -> [ArtistSummary] {

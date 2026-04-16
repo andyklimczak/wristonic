@@ -271,13 +271,39 @@ final class AppEnvironment: ObservableObject {
 
     func makeClient() throws -> SubsonicClient {
         let configuration = try settingsStore.buildServerConfiguration()
-        if let cachedClient, cachedClientConfiguration == configuration {
+        return makeClient(configuration: configuration, cacheResult: true)
+    }
+
+    func makeClient(configuration: ServerConfiguration, cacheResult: Bool = false) -> SubsonicClient {
+        if cacheResult, let cachedClient, cachedClientConfiguration == configuration {
             return cachedClient
         }
+
         let client = SubsonicClient(configuration: configuration, transport: transportFactory(configuration))
-        cachedClientConfiguration = configuration
-        cachedClient = client
+        if cacheResult {
+            cachedClientConfiguration = configuration
+            cachedClient = client
+        }
         return client
+    }
+
+    func validateServerConnection(
+        serverAddress: String,
+        username: String,
+        password: String,
+        allowInsecureConnections: Bool
+    ) async throws -> ServerConfiguration {
+        let configuration = try SettingsStore.buildServerConfiguration(
+            serverAddress: serverAddress,
+            username: username,
+            password: password,
+            preferredBitrateKbps: settingsStore.settings.preferredBitrateKbps,
+            allowInsecureConnections: allowInsecureConnections
+        )
+
+        let client = makeClient(configuration: configuration)
+        try await client.ping(timeoutInterval: 8)
+        return configuration
     }
 
     func clearServerData() async {

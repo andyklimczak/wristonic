@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchKit
 
 struct ServerSetupView: View {
     @EnvironmentObject private var environment: AppEnvironment
@@ -15,6 +16,7 @@ struct ServerSetupView: View {
     @State private var allowInsecure = false
     @State private var connectionMessage: String?
     @State private var isTestingConnection = false
+    @State private var didSucceed = false
 
     var body: some View {
         List {
@@ -54,8 +56,10 @@ struct ServerSetupView: View {
             }
 
             Section {
-                Button(isTestingConnection ? "Connecting..." : confirmTitle) {
+                Button {
                     Task { await saveAndTest() }
+                } label: {
+                    buttonLabel
                 }
                 .disabled(isTestingConnection || !canConnect)
 
@@ -65,10 +69,10 @@ struct ServerSetupView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let connectionMessage {
+                if let connectionMessage, !didSucceed {
                     Text(connectionMessage)
                         .font(.caption2)
-                        .foregroundStyle(connectionMessage == "Connected" ? .green : .red)
+                        .foregroundStyle(.red)
                 }
             }
         }
@@ -76,6 +80,18 @@ struct ServerSetupView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             loadDraftFromSettings()
+        }
+        .onChange(of: serverAddress) { _, _ in
+            resetConnectionState()
+        }
+        .onChange(of: username) { _, _ in
+            resetConnectionState()
+        }
+        .onChange(of: password) { _, _ in
+            resetConnectionState()
+        }
+        .onChange(of: allowInsecure) { _, _ in
+            resetConnectionState()
         }
     }
 
@@ -88,24 +104,19 @@ struct ServerSetupView: View {
     }
 
     private var normalizedServerAddress: String {
-        guard !trimmedServerAddress.isEmpty else { return "" }
-        if trimmedServerAddress.contains("://") {
-            return trimmedServerAddress
-        }
-        return (allowInsecure ? "http://" : "https://") + trimmedServerAddress
+        SettingsStore.normalizedServerAddress(from: serverAddress, allowInsecureConnections: allowInsecure)
     }
 
     private var canConnect: Bool {
         guard !trimmedUsername.isEmpty, !password.isEmpty else { return false }
-        guard !normalizedServerAddress.isEmpty else { return false }
-        return URL(string: normalizedServerAddress) != nil
+        return validatedServerURL != nil
     }
 
     private var validationMessage: String? {
         if trimmedServerAddress.isEmpty {
             return "Enter a server address."
         }
-        if URL(string: normalizedServerAddress) == nil {
+        if validatedServerURL == nil {
             return "Enter a valid server address."
         }
         if trimmedUsername.isEmpty {
@@ -125,26 +136,83 @@ struct ServerSetupView: View {
         allowInsecure = settings.allowInsecureConnections
     }
 
+    private var validatedServerURL: URL? {
+        SettingsStore.validatedServerURL(from: serverAddress, allowInsecureConnections: allowInsecure)
+    }
+
+    @ViewBuilder
+    private var buttonLabel: some View {
+        if isTestingConnection {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                    .fixedSize()
+                Text("Testing connection")
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+        } else if didSucceed {
+            Label("Connected", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else {
+            Text(confirmTitle)
+        }
+    }
+
     private func saveAndTest() async {
         connectionMessage = nil
+        didSucceed = false
         isTestingConnection = true
         defer { isTestingConnection = false }
 
-        var settings = environment.settingsStore.settings
-        settings.serverURLString = trimmedServerAddress
-        settings.username = trimmedUsername
-        settings.allowInsecureConnections = allowInsecure
-        environment.settingsStore.settings = settings
-        environment.settingsStore.password = password
-
         do {
+            _ = try await environment.validateServerConnection(
+                serverAddress: trimmedServerAddress,
+                username: trimmedUsername,
+                password: password,
+                allowInsecureConnections: allowInsecure
+            )
+
+            var settings = environment.settingsStore.settings
+            settings.serverURLString = trimmedServerAddress
+            settings.username = trimmedUsername
+            settings.allowInsecureConnections = allowInsecure
+            environment.settingsStore.settings = settings
+            environment.settingsStore.password = password
             await environment.settingsStore.persist()
-            let client = try environment.makeClient()
-            try await client.ping()
-            connectionMessage = "Connected"
+            didSucceed = true
+            WKInterfaceDevice.current().play(.success)
             onSuccess?()
         } catch {
-            connectionMessage = error.localizedDescription
+            didSucceed = false
+            connectionMessage = friendlyConnectionMessage(for: error)
         }
+    }
+
+    private func resetConnectionState() {
+        guard !isTestingConnection else { return }
+        didSucceed = false
+        connectionMessage = nil
+    }
+
+    private func friendlyConnectionMessage(for error: Error) -> String {
+        if let settingsError = error as? SettingsError {
+            return settingsError.localizedDescription
+        }
+
+        if let clientError = error as? SubsonicClientError {
+            switch clientError {
+            case .server(let message):
+                return message
+            case .invalidResponse, .missingPayload, .unsupportedMediaType:
+                return "Unable to connect to server."
+            }
+        }
+
+        if error is URLError {
+            return "Unable to connect to server."
+        }
+
+        return "Unable to connect to server."
     }
 }
