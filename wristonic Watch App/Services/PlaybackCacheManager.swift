@@ -65,7 +65,14 @@ final class PlaybackCacheManager {
     }
 
     func primePlaybackQueue(_ queue: [Track], currentIndex: Int, excludingTrackIDs: Set<String>) {
-        guard let startIndex = queue.indices.contains(currentIndex) ? currentIndex : nil else {
+        guard queue.indices.contains(currentIndex) else {
+            cancelPrefetch()
+            return
+        }
+
+        let startIndex = currentIndex + 1
+        guard queue.indices.contains(startIndex) else {
+            trimCache(keeping: [])
             cancelPrefetch()
             return
         }

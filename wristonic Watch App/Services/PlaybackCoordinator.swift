@@ -226,8 +226,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             return
         }
 
-        let upcomingIndex = currentIndex + 1
-        guard queue.indices.contains(upcomingIndex) else {
+        guard queue.indices.contains(currentIndex), queue.indices.contains(currentIndex + 1) else {
             playbackCacheManager.cancelPrefetch()
             return
         }
@@ -237,7 +236,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 downloadManager.localFileURL(for: track) == nil ? nil : track.id
             }
         )
-        playbackCacheManager.primePlaybackQueue(queue, currentIndex: upcomingIndex, excludingTrackIDs: permanentlyDownloadedTrackIDs)
+        playbackCacheManager.primePlaybackQueue(queue, currentIndex: currentIndex, excludingTrackIDs: permanentlyDownloadedTrackIDs)
     }
 
     private func startCurrentCandidate() async {
