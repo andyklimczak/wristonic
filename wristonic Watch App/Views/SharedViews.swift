@@ -112,6 +112,21 @@ struct MediaHeaderView: View {
     }
 }
 
+struct NowPlayingPlayPauseButton: View {
+    @EnvironmentObject private var environment: AppEnvironment
+
+    var body: some View {
+        Button {
+            environment.playbackCoordinator.togglePlayback()
+        } label: {
+            Image(systemName: environment.playbackCoordinator.isPlaying || environment.playbackCoordinator.isBuffering ? "pause.fill" : "play.fill")
+                .font(.title2)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.borderedProminent)
+    }
+}
+
 struct NowPlayingControlsView: View {
     @EnvironmentObject private var environment: AppEnvironment
 
@@ -119,8 +134,29 @@ struct NowPlayingControlsView: View {
         environment.playbackCoordinator.currentTrack != nil
     }
 
+    private var canSkipForward: Bool {
+        environment.playbackCoordinator.currentRadioStation == nil &&
+        environment.playbackCoordinator.currentIndex + 1 < environment.playbackCoordinator.queue.count
+    }
+
+    private var canSkipBackward: Bool {
+        environment.playbackCoordinator.currentRadioStation == nil &&
+        environment.playbackCoordinator.currentTrack != nil &&
+        !environment.playbackCoordinator.queue.isEmpty
+    }
+
     var body: some View {
         HStack {
+            Button {
+                Task { await environment.playbackCoordinator.skipBackward() }
+            } label: {
+                Image(systemName: "backward.end.fill")
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSkipBackward)
+
+            Spacer()
+
             Button {
                 environment.playbackCoordinator.seek(by: -15)
             } label: {
@@ -132,30 +168,22 @@ struct NowPlayingControlsView: View {
             Spacer()
 
             Button {
-                environment.playbackCoordinator.togglePlayback()
-            } label: {
-                Image(systemName: environment.playbackCoordinator.isPlaying || environment.playbackCoordinator.isBuffering ? "pause.fill" : "play.fill")
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Button {
-                environment.playbackCoordinator.stop()
-            } label: {
-                Image(systemName: "stop.fill")
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Button {
                 environment.playbackCoordinator.seek(by: 15)
             } label: {
                 Image(systemName: "goforward.15")
             }
             .buttonStyle(.plain)
             .disabled(!canSeek)
+
+            Spacer()
+
+            Button {
+                Task { await environment.playbackCoordinator.skipForward() }
+            } label: {
+                Image(systemName: "forward.end.fill")
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSkipForward)
         }
         .font(.headline)
     }

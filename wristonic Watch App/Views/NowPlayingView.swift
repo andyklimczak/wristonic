@@ -10,6 +10,8 @@ struct NowPlayingView: View {
             if let station = environment.playbackCoordinator.currentRadioStation {
                 Section {
                     VStack(alignment: .center, spacing: 10) {
+                        NowPlayingPlayPauseButton()
+
                         ArtworkView(
                             url: radioCoverArtURL(for: station.coverArtID),
                             dimension: 96
@@ -44,12 +46,12 @@ struct NowPlayingView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .frame(maxWidth: .infinity)
-
-                    NowPlayingControlsView()
                 }
             } else if let track = environment.playbackCoordinator.currentTrack {
                 Section {
                     VStack(alignment: .center, spacing: 10) {
+                        NowPlayingPlayPauseButton()
+
                         ArtworkView(
                             url: nowPlayingCoverArtURL(),
                             dimension: 96
@@ -104,12 +106,6 @@ struct NowPlayingView: View {
                     if environment.playbackCoordinator.currentRadioStation == nil {
                         Button(environment.playbackCoordinator.isRepeatingAlbum ? "Repeat Album On" : "Repeat Album Off") {
                             environment.playbackCoordinator.toggleRepeatAlbum()
-                        }
-                        Button("Next Track") {
-                            Task { await environment.playbackCoordinator.skipForward() }
-                        }
-                        Button("Previous Track") {
-                            Task { await environment.playbackCoordinator.skipBackward() }
                         }
                     }
                     if environment.playbackCoordinator.currentAlbum != nil {

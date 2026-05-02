@@ -28,6 +28,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private var timeObserverToken: Any?
     private var timeControlStatusObserver: NSKeyValueObservation?
     private var itemEndObserver: NSObjectProtocol?
+    private var itemFailureObserver: NSObjectProtocol?
+    private var itemStatusObserver: NSKeyValueObservation?
     private var currentTrackListenSeconds: TimeInterval = 0
     private var currentSourceCandidates: [URL] = []
     private var candidateIndex = 0
@@ -60,7 +62,11 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         if let itemEndObserver {
             NotificationCenter.default.removeObserver(itemEndObserver)
         }
+        if let itemFailureObserver {
+            NotificationCenter.default.removeObserver(itemFailureObserver)
+        }
         timeControlStatusObserver?.invalidate()
+        itemStatusObserver?.invalidate()
     }
 
     func play(albumDetail: AlbumDetail, startAt index: Int) async {
@@ -92,6 +98,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         let item = AVPlayerItem(url: radioStation.streamURL)
         item.preferredForwardBufferDuration = 1
         player.automaticallyWaitsToMinimizeStalling = false
+        observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
         activateAudioSession()
         player.play()
@@ -119,6 +126,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         finalizePlaybackRecord()
         playbackCacheManager.cancelPrefetch()
         player.pause()
+        removeCurrentItemObservers()
         player.replaceCurrentItem(with: nil)
         currentTrack = nil
         currentAlbum = nil
@@ -189,6 +197,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         }
         currentTrack = track
         lastError = nil
+        elapsed = 0
+        duration = track.duration ?? 0
         currentTrackListenSeconds = 0
         updateArtworkIfNeeded()
 
@@ -196,6 +206,9 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             currentSourceCandidates = [localURL]
         } else if let cachedURL = playbackCacheManager.localFileURL(for: track) {
             currentSourceCandidates = [cachedURL]
+            if !settingsStore.settings.offlineOnly {
+                currentSourceCandidates.append(contentsOf: (try? streamCandidateURLs(for: track)) ?? [])
+            }
         } else if settingsStore.settings.offlineOnly {
             lastError = "This track is not downloaded."
             isPlaying = false
@@ -204,7 +217,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             return
         } else {
             do {
-                currentSourceCandidates = try clientProvider().streamCandidates(for: track, preferTranscoding: true).map(\.request.url!).filter { !$0.absoluteString.isEmpty }
+                currentSourceCandidates = try streamCandidateURLs(for: track)
             } catch {
                 lastError = error.localizedDescription
                 isPlaying = false
@@ -218,6 +231,12 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         startPlaybackCaching()
         refreshNowPlayingInfo()
         await startCurrentCandidate()
+    }
+
+    private func streamCandidateURLs(for track: Track) throws -> [URL] {
+        try clientProvider().streamCandidates(for: track, preferTranscoding: true)
+            .compactMap(\.request.url)
+            .filter { !$0.absoluteString.isEmpty }
     }
 
     private func startPlaybackCaching() {
@@ -250,6 +269,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         let item = AVPlayerItem(url: url)
         item.preferredForwardBufferDuration = 0
         player.automaticallyWaitsToMinimizeStalling = true
+        observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
         activateAudioSession()
         player.play()
@@ -267,10 +287,16 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1, preferredTimescale: 2), queue: .main) { [weak self] currentTime in
             guard let self else { return }
             let nextElapsed = currentTime.seconds.isFinite ? currentTime.seconds : 0
-            let nextDuration = player.currentItem?.duration.seconds.isFinite == true ? player.currentItem?.duration.seconds ?? 0 : 0
+            let itemDuration = player.currentItem?.duration.seconds
             let timeControlStatus = player.timeControlStatus
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                let nextDuration: TimeInterval
+                if let itemDuration, itemDuration.isFinite, itemDuration > 0 {
+                    nextDuration = itemDuration
+                } else {
+                    nextDuration = currentTrack?.duration ?? 0
+                }
                 elapsed = nextElapsed
                 duration = nextDuration
                 currentTrackListenSeconds = max(currentTrackListenSeconds, nextElapsed)
@@ -292,15 +318,50 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 refreshNowPlayingInfo()
             }
         }
+    }
+
+    private func observeCurrentItem(_ item: AVPlayerItem) {
+        removeCurrentItemObservers()
+
+        itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self, weak item] observedItem, _ in
+            Task { @MainActor [weak self, weak item] in
+                guard let self, let item, item === self.player.currentItem else { return }
+                guard observedItem.status == .failed else { return }
+                await self.handleCurrentItemFailure(observedItem.error)
+            }
+        }
 
         itemEndObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
-            object: nil,
+            object: item,
             queue: .main
-        ) { [weak self] notification in
-            guard let self, notification.object as? AVPlayerItem === player.currentItem else { return }
+        ) { [weak self, weak item] _ in
+            guard let self, let item, item === self.player.currentItem else { return }
             Task { await self.handleTrackFinished() }
         }
+
+        itemFailureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self, weak item] notification in
+            guard let self, let item, item === self.player.currentItem else { return }
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            Task { await self.handleCurrentItemFailure(error) }
+        }
+    }
+
+    private func removeCurrentItemObservers() {
+        if let itemEndObserver {
+            NotificationCenter.default.removeObserver(itemEndObserver)
+            self.itemEndObserver = nil
+        }
+        if let itemFailureObserver {
+            NotificationCenter.default.removeObserver(itemFailureObserver)
+            self.itemFailureObserver = nil
+        }
+        itemStatusObserver?.invalidate()
+        itemStatusObserver = nil
     }
 
     private func handleTrackFinished() async {
@@ -327,6 +388,22 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 refreshNowPlayingInfo()
             }
         }
+    }
+
+    private func handleCurrentItemFailure(_ error: Error?) async {
+        guard let track = currentTrack else { return }
+
+        if candidateIndex + 1 < currentSourceCandidates.count {
+            candidateIndex += 1
+            await startCurrentCandidate()
+            return
+        }
+
+        lastError = error?.localizedDescription ?? "Unable to play \(track.title)."
+        isPlaying = false
+        isBuffering = false
+        shouldPlayAlbumStartHaptic = false
+        refreshNowPlayingInfo()
     }
 
     private func playAlbumStartHapticIfNeeded() {
