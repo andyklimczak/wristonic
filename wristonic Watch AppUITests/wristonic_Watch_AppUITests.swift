@@ -28,10 +28,11 @@ final class wristonic_Watch_AppUITests: XCTestCase {
         app.launchEnvironment["WRISTONIC_DEMO_MODE"] = "1"
         app.launch()
 
-        app.buttons["Artists"].tap()
-        XCTAssertTrue(app.staticTexts["Aurora Echo"].waitForExistence(timeout: 3))
-        app.buttons["Aurora Echo"].tap()
-        XCTAssertTrue(app.staticTexts["Analog Dawn"].waitForExistence(timeout: 3))
+        tapButton(startingWith: "Artists", in: app)
+        let artistButton = button(startingWith: "Aurora Echo", in: app)
+        XCTAssertTrue(artistButton.waitForExistence(timeout: 5))
+        artistButton.tap()
+        XCTAssertTrue(button(startingWith: "Analog Dawn", in: app).waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -41,9 +42,27 @@ final class wristonic_Watch_AppUITests: XCTestCase {
         app.launchEnvironment["WRISTONIC_PRESEED_DOWNLOADS"] = "1"
         app.launch()
 
-        app.buttons["Settings"].tap()
-        XCTAssertTrue(app.buttons["Downloads"].waitForExistence(timeout: 3))
-        app.buttons["Downloads"].tap()
-        XCTAssertTrue(app.staticTexts["Analog Dawn"].waitForExistence(timeout: 3))
+        tapButton(startingWith: "Settings", in: app)
+        tapButton(startingWith: "Storage", in: app)
+        tapButton(startingWith: "Downloads", in: app)
+        XCTAssertTrue(app.staticTexts["Analog Dawn"].waitForExistence(timeout: 5))
+    }
+
+    private func button(startingWith labelPrefix: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", labelPrefix)).firstMatch
+    }
+
+    private func tapButton(startingWith labelPrefix: String, in app: XCUIApplication, timeout: TimeInterval = 5) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let target = button(startingWith: labelPrefix, in: app)
+            if target.exists && target.isHittable {
+                target.tap()
+                return
+            }
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        XCTFail("Button starting with \(labelPrefix) was not hittable")
     }
 }

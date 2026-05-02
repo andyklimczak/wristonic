@@ -151,8 +151,13 @@ final class DownloadManagerTests: XCTestCase {
             if condition() {
                 return
             }
-            try await Task.sleep(nanoseconds: 100_000_000)
+            pumpMainRunLoop()
+            await Task.yield()
         }
         XCTFail("Timed out waiting for condition")
+    }
+
+    private func pumpMainRunLoop() {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
     }
 }
