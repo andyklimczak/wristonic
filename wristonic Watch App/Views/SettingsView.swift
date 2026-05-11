@@ -29,6 +29,7 @@ struct SettingsView: View {
             }
 
             Section("UI") {
+                Toggle("Show Playlists", isOn: showPlaylistsBinding)
                 Toggle("Show Internet Radio", isOn: showInternetRadioBinding)
             }
 
@@ -88,6 +89,13 @@ struct SettingsView: View {
         Binding(
             get: { environment.settingsStore.settings.showInternetRadio },
             set: { environment.settingsStore.settings.showInternetRadio = $0 }
+        )
+    }
+
+    private var showPlaylistsBinding: Binding<Bool> {
+        Binding(
+            get: { environment.settingsStore.settings.showPlaylists },
+            set: { environment.settingsStore.settings.showPlaylists = $0 }
         )
     }
 }

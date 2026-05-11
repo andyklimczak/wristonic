@@ -145,6 +145,142 @@ final class DownloadManagerTests: XCTestCase {
         XCTAssertEqual(manager.state(for: "album-2").status, .queued)
     }
 
+    func testPlaylistDownloadReusesExistingAlbumFiles() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsStore = makeSettingsStore(name: UUID().uuidString)
+        let downloadService = ImmediateDownloadService()
+        let recordsStore = JSONFileStore<[DownloadRecord]>(url: root.appendingPathComponent("downloads.json"))
+        let playlistRecordsStore = JSONFileStore<[PlaylistDownloadRecord]>(url: root.appendingPathComponent("playlist-downloads.json"))
+        let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: root.appendingPathComponent("history.json"))
+        let manager = DownloadManager(
+            settingsStore: settingsStore,
+            recordsStore: recordsStore,
+            historyStore: historyStore,
+            playlistRecordsStore: playlistRecordsStore,
+            downloadsDirectory: root.appendingPathComponent("files", isDirectory: true),
+            downloadService: downloadService,
+            clientProvider: { try makeClient() }
+        )
+        await manager.load()
+
+        let album = try await makeClient().album(id: "album-1")
+        manager.enqueue(albumDetail: album)
+        try await wait(for: { manager.state(for: "album-1").status == .downloaded })
+        let requestCountAfterAlbum = downloadService.requests.count
+
+        let playlist = try await makeClient().playlist(id: "playlist-2")
+        manager.enqueue(playlistDetail: playlist)
+        try await wait(for: { manager.playlistState(for: "playlist-2").status == .downloaded })
+
+        XCTAssertTrue(manager.hasLocalContent(playlistID: "playlist-2"))
+        XCTAssertEqual(downloadService.requests.count, requestCountAfterAlbum + 2)
+        XCTAssertNotNil(manager.localPlaylistCoverArtURL(for: "playlist-2"))
+        XCTAssertNotNil(manager.localFileURL(for: playlist.tracks[0]))
+        XCTAssertNotNil(manager.localFileURL(for: playlist.tracks[1]))
+    }
+
+    func testPlaylistOnlyDeletePreservesAlbumOwnedTracks() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsStore = makeSettingsStore(name: UUID().uuidString)
+        let downloadService = ImmediateDownloadService()
+        let recordsStore = JSONFileStore<[DownloadRecord]>(url: root.appendingPathComponent("downloads.json"))
+        let playlistRecordsStore = JSONFileStore<[PlaylistDownloadRecord]>(url: root.appendingPathComponent("playlist-downloads.json"))
+        let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: root.appendingPathComponent("history.json"))
+        let manager = DownloadManager(
+            settingsStore: settingsStore,
+            recordsStore: recordsStore,
+            historyStore: historyStore,
+            playlistRecordsStore: playlistRecordsStore,
+            downloadsDirectory: root.appendingPathComponent("files", isDirectory: true),
+            downloadService: downloadService,
+            clientProvider: { try makeClient() }
+        )
+        await manager.load()
+
+        let album = try await makeClient().album(id: "album-1")
+        manager.enqueue(albumDetail: album)
+        try await wait(for: { manager.state(for: "album-1").status == .downloaded })
+
+        let playlist = try await makeClient().playlist(id: "playlist-2")
+        manager.enqueue(playlistDetail: playlist)
+        try await wait(for: { manager.playlistState(for: "playlist-2").status == .downloaded })
+
+        manager.deleteDownloadedPlaylist(playlistID: "playlist-2")
+
+        XCTAssertFalse(manager.hasLocalContent(playlistID: "playlist-2"))
+        XCTAssertNil(manager.localPlaylistCoverArtURL(for: "playlist-2"))
+        XCTAssertTrue(manager.hasLocalContent(albumID: "album-1"))
+        XCTAssertNotNil(manager.localFileURL(for: album.tracks[0]))
+    }
+
+    func testAlbumDeletePreservesPlaylistOwnedTracks() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsStore = makeSettingsStore(name: UUID().uuidString)
+        let downloadService = ImmediateDownloadService()
+        let recordsStore = JSONFileStore<[DownloadRecord]>(url: root.appendingPathComponent("downloads.json"))
+        let playlistRecordsStore = JSONFileStore<[PlaylistDownloadRecord]>(url: root.appendingPathComponent("playlist-downloads.json"))
+        let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: root.appendingPathComponent("history.json"))
+        let manager = DownloadManager(
+            settingsStore: settingsStore,
+            recordsStore: recordsStore,
+            historyStore: historyStore,
+            playlistRecordsStore: playlistRecordsStore,
+            downloadsDirectory: root.appendingPathComponent("files", isDirectory: true),
+            downloadService: downloadService,
+            clientProvider: { try makeClient() }
+        )
+        await manager.load()
+
+        let playlist = try await makeClient().playlist(id: "playlist-2")
+        manager.enqueue(playlistDetail: playlist)
+        try await wait(for: { manager.playlistState(for: "playlist-2").status == .downloaded })
+
+        let album = try await makeClient().album(id: "album-1")
+        manager.enqueue(albumDetail: album)
+        try await wait(for: { manager.state(for: "album-1").status == .downloaded })
+
+        manager.deleteDownloadedAlbum(albumID: "album-1")
+
+        XCTAssertTrue(manager.hasLocalContent(playlistID: "playlist-2"))
+        XCTAssertNotNil(manager.localPlaylistCoverArtURL(for: "playlist-2"))
+        XCTAssertNotNil(manager.localFileURL(for: playlist.tracks[0]))
+    }
+
+    func testFullAlbumPlaylistMarksAlbumsDownloaded() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsStore = makeSettingsStore(name: UUID().uuidString)
+        let downloadService = ImmediateDownloadService()
+        let recordsStore = JSONFileStore<[DownloadRecord]>(url: root.appendingPathComponent("downloads.json"))
+        let playlistRecordsStore = JSONFileStore<[PlaylistDownloadRecord]>(url: root.appendingPathComponent("playlist-downloads.json"))
+        let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: root.appendingPathComponent("history.json"))
+        let manager = DownloadManager(
+            settingsStore: settingsStore,
+            recordsStore: recordsStore,
+            historyStore: historyStore,
+            playlistRecordsStore: playlistRecordsStore,
+            downloadsDirectory: root.appendingPathComponent("files", isDirectory: true),
+            downloadService: downloadService,
+            clientProvider: { try makeClient() }
+        )
+        await manager.load()
+
+        let playlist = try await makeClient().playlist(id: "playlist-1")
+        let album1 = try await makeClient().album(id: "album-1")
+        let album2 = try await makeClient().album(id: "album-2")
+
+        manager.enqueue(playlistDetail: playlist)
+        try await wait(for: { manager.playlistState(for: "playlist-1").status == .downloaded })
+
+        XCTAssertTrue(manager.isAlbumFullyDownloaded(album1))
+        XCTAssertTrue(manager.isAlbumFullyDownloaded(album2))
+        XCTAssertTrue(manager.hasLocalContent(albumID: "album-1"))
+        XCTAssertTrue(manager.hasLocalContent(albumID: "album-2"))
+    }
+
     private func wait(for condition: @escaping @MainActor () -> Bool, timeout: TimeInterval = 3) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

@@ -109,6 +109,46 @@ final class LibraryRepository: ObservableObject {
         }
     }
 
+    func playlists(forceRefresh: Bool = false) async throws -> [PlaylistSummary] {
+        if settingsStore.settings.offlineOnly {
+            return cachedSnapshot.playlists
+        }
+        if !forceRefresh, !cachedSnapshot.playlists.isEmpty {
+            return cachedSnapshot.playlists
+        }
+        let playlists = try await clientProvider().playlists()
+        cachedSnapshot.playlists = playlists
+        cachedSnapshot.lastUpdatedAt = Date()
+        persistCachedSnapshot()
+        return playlists
+    }
+
+    func playlistDetail(playlistID: String, forceRefresh: Bool = false) async throws -> PlaylistDetail {
+        let cachedDetail = cachedSnapshot.playlistDetails[playlistID]
+
+        if settingsStore.settings.offlineOnly {
+            if let cachedDetail {
+                return offlinePlaylistDetail(cachedDetail)
+            }
+            throw SubsonicClientError.missingPayload("playlist")
+        }
+        if !forceRefresh, let cachedDetail {
+            return cachedDetail
+        }
+        do {
+            let detail = try await clientProvider().playlist(id: playlistID)
+            cachedSnapshot.playlistDetails[playlistID] = detail
+            cachedSnapshot.lastUpdatedAt = Date()
+            persistCachedSnapshot()
+            return detail
+        } catch {
+            if let cachedDetail {
+                return cachedDetail
+            }
+            throw error
+        }
+    }
+
     func internetRadioStations(forceRefresh: Bool = false) async throws -> [InternetRadioStation] {
         if settingsStore.settings.offlineOnly {
             return []
@@ -161,5 +201,17 @@ final class LibraryRepository: ObservableObject {
                 ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast)
             }.map(\.album)
         }
+    }
+
+    private func offlinePlaylistDetail(_ detail: PlaylistDetail) -> PlaylistDetail {
+        let localTrackIDs = Set(
+            downloadRecordsProvider()
+                .flatMap(\.downloadedTracks)
+                .map(\.trackID)
+        )
+        return PlaylistDetail(
+            playlist: detail.playlist,
+            tracks: detail.tracks.filter { localTrackIDs.contains($0.id) }
+        )
     }
 }

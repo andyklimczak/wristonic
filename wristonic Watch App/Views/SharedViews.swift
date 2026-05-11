@@ -236,7 +236,7 @@ struct NowPlayingSummarySection: View {
                         )
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(track.albumName)
+                            Text(environment.playbackCoordinator.currentPlaylist?.name ?? track.albumName)
                                 .lineLimit(1)
                             Text(track.title)
                                 .font(.caption2)
@@ -263,8 +263,12 @@ struct NowPlayingSummarySection: View {
            let localURL = environment.downloadManager.localCoverArtURL(for: albumID) {
             return localURL
         }
+        if let playlistID = environment.playbackCoordinator.currentPlaylist?.id,
+           let localURL = environment.downloadManager.localPlaylistCoverArtURL(for: playlistID) {
+            return localURL
+        }
         do {
-            return try environment.makeClient().coverArtURL(for: coverArtID)
+            return try environment.makeClient().coverArtURL(for: coverArtID ?? environment.playbackCoordinator.currentPlaylist?.coverArtID)
         } catch {
             return nil
         }

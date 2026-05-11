@@ -163,6 +163,66 @@ struct DemoMode {
       }
     }
     """
+
+    static let playlistsPayload = """
+    {
+      "subsonic-response": {
+        "status": "ok",
+        "version": "1.16.1",
+        "playlists": {
+          "playlist": [
+            { "id": "playlist-1", "name": "Run", "owner": "demo", "songCount": 4, "duration": 830, "coverArt": "cover-1", "created": "2026-04-01T00:00:00Z", "changed": "2026-04-02T00:00:00Z" },
+            { "id": "playlist-2", "name": "Short Mix", "owner": "demo", "songCount": 2, "duration": 415, "coverArt": "cover-2", "created": "2026-04-03T00:00:00Z", "changed": "2026-04-04T00:00:00Z" }
+          ]
+        }
+      }
+    }
+    """
+
+    static let playlistPayloads: [String: String] = [
+        "playlist-1": """
+        {
+          "subsonic-response": {
+            "status": "ok",
+            "version": "1.16.1",
+            "playlist": {
+              "id": "playlist-1",
+              "name": "Run",
+              "owner": "demo",
+              "songCount": 4,
+              "duration": 830,
+              "coverArt": "cover-1",
+              "entry": [
+                { "id": "track-1", "parent": "ignored-parent", "albumId": "album-1", "title": "First Light", "artistId": "artist-1", "artist": "Aurora Echo", "album": "Analog Dawn", "track": 1, "discNumber": 1, "duration": 210, "suffix": "mp3", "contentType": "audio/mpeg", "coverArt": "cover-1" },
+                { "id": "track-2", "parent": "album-1", "albumId": "album-1", "title": "Glass Signal", "artistId": "artist-1", "artist": "Aurora Echo", "album": "Analog Dawn", "track": 2, "discNumber": 1, "duration": 210, "suffix": "mp3", "contentType": "audio/mpeg", "coverArt": "cover-1" },
+                { "id": "track-3", "parent": "album-2", "albumId": "album-2", "title": "Blue Circuit", "artistId": "artist-1", "artist": "Aurora Echo", "album": "Blue Circuit", "track": 1, "discNumber": 1, "duration": 205, "suffix": "mp3", "contentType": "audio/mpeg", "coverArt": "cover-2" },
+                { "id": "track-4", "parent": "album-2", "albumId": "album-2", "title": "Static Bloom", "artistId": "artist-1", "artist": "Aurora Echo", "album": "Blue Circuit", "track": 2, "discNumber": 1, "duration": 205, "suffix": "mp3", "contentType": "audio/mpeg", "coverArt": "cover-2" }
+              ]
+            }
+          }
+        }
+        """,
+        "playlist-2": """
+        {
+          "subsonic-response": {
+            "status": "ok",
+            "version": "1.16.1",
+            "playlist": {
+              "id": "playlist-2",
+              "name": "Short Mix",
+              "owner": "demo",
+              "songCount": 2,
+              "duration": 415,
+              "coverArt": "cover-2",
+              "entry": [
+                { "id": "track-1", "parent": "album-1", "albumId": "album-1", "title": "First Light", "artistId": "artist-1", "artist": "Aurora Echo", "album": "Analog Dawn", "track": 1, "discNumber": 1, "duration": 210, "suffix": "mp3", "contentType": "audio/mpeg", "coverArt": "cover-1" },
+                { "id": "track-3", "parent": "album-2", "albumId": "album-2", "title": "Blue Circuit", "artistId": "artist-1", "artist": "Aurora Echo", "album": "Blue Circuit", "track": 1, "discNumber": 1, "duration": 205, "suffix": "mp3", "contentType": "audio/mpeg", "coverArt": "cover-2" }
+              ]
+            }
+          }
+        }
+        """
+    ]
 }
 
 final class DemoTransport: Transporting {
@@ -200,6 +260,10 @@ final class DemoTransport: Transporting {
             string = DemoMode.albumPayloads[queryItems["id"] ?? ""] ?? DemoMode.albumPayloads["album-1"]!
         case "getAlbumList2":
             string = DemoMode.albumListPayload
+        case "getPlaylists":
+            string = DemoMode.playlistsPayload
+        case "getPlaylist":
+            string = DemoMode.playlistPayloads[queryItems["id"] ?? ""] ?? DemoMode.playlistPayloads["playlist-1"]!
         case "getInternetRadioStations":
             string = DemoMode.internetRadioStationsPayload
         case "getCoverArt":

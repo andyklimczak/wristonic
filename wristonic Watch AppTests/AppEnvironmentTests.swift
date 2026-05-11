@@ -12,6 +12,7 @@ final class AppEnvironmentTests: XCTestCase {
 
         let cacheStore = JSONFileStore<CachedLibrarySnapshot>(url: root.appendingPathComponent("cache.json"))
         let downloadsStore = JSONFileStore<[DownloadRecord]>(url: root.appendingPathComponent("downloads.json"))
+        let playlistDownloadsStore = JSONFileStore<[PlaylistDownloadRecord]>(url: root.appendingPathComponent("playlist-downloads.json"))
         let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: root.appendingPathComponent("history.json"))
         let playbackCacheStore = JSONFileStore<[PlaybackCacheRecord]>(url: root.appendingPathComponent("playback-cache.json"))
         let scrobbleStore = JSONFileStore<[PendingPlaybackScrobble]>(url: root.appendingPathComponent("scrobbles.json"))
@@ -56,6 +57,8 @@ final class AppEnvironmentTests: XCTestCase {
                 albumsBySort: [AlbumSortMode.alphabeticalByName.rawValue: [album]],
                 albumsByArtist: ["artist-1": [album]],
                 albumDetails: ["album-1": AlbumDetail(album: album, tracks: [track])],
+                playlists: [],
+                playlistDetails: [:],
                 internetRadioStations: [],
                 lastUpdatedAt: Date()
             )
@@ -111,6 +114,7 @@ final class AppEnvironmentTests: XCTestCase {
             settingsStore: settingsStore,
             recordsStore: downloadsStore,
             historyStore: historyStore,
+            playlistRecordsStore: playlistDownloadsStore,
             downloadsDirectory: downloadsDirectory,
             clientProvider: { try environment.makeClient() }
         )
@@ -171,12 +175,14 @@ final class AppEnvironmentTests: XCTestCase {
 
         let cachedSnapshot = try await cacheStore.load(default: .empty)
         let downloadedRecords = try await downloadsStore.load(default: [])
+        let playlistDownloadRecords = try await playlistDownloadsStore.load(default: [])
         let playbackHistory = try await historyStore.load(default: [:])
         let playbackCacheRecords = try await playbackCacheStore.load(default: [])
         let pendingScrobbles = try await scrobbleStore.load(default: [])
 
         XCTAssertEqual(cachedSnapshot, .empty)
         XCTAssertEqual(downloadedRecords, [])
+        XCTAssertEqual(playlistDownloadRecords, [])
         XCTAssertEqual(playbackHistory, [:])
         XCTAssertEqual(playbackCacheRecords, [])
         XCTAssertEqual(pendingScrobbles, [])

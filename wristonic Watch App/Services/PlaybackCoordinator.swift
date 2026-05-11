@@ -9,6 +9,7 @@ import WatchKit
 final class PlaybackCoordinator: NSObject, ObservableObject {
     @Published private(set) var currentTrack: Track?
     @Published private(set) var currentAlbum: AlbumSummary?
+    @Published private(set) var currentPlaylist: PlaylistSummary?
     @Published private(set) var currentRadioStation: InternetRadioStation?
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int = 0
@@ -71,9 +72,20 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     func play(albumDetail: AlbumDetail, startAt index: Int) async {
         currentRadioStation = nil
+        currentPlaylist = nil
         currentAlbum = albumDetail.album
         queue = albumDetail.tracks
         currentIndex = min(max(index, 0), max(albumDetail.tracks.count - 1, 0))
+        shouldPlayAlbumStartHaptic = true
+        await playCurrentTrack()
+    }
+
+    func play(playlistDetail: PlaylistDetail, startAt index: Int) async {
+        currentRadioStation = nil
+        currentAlbum = nil
+        currentPlaylist = playlistDetail.playlist
+        queue = playlistDetail.tracks
+        currentIndex = min(max(index, 0), max(playlistDetail.tracks.count - 1, 0))
         shouldPlayAlbumStartHaptic = true
         await playCurrentTrack()
     }
@@ -83,6 +95,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         playbackCacheManager.cancelPrefetch()
         currentTrack = nil
         currentAlbum = nil
+        currentPlaylist = nil
         currentRadioStation = radioStation
         queue = []
         currentIndex = 0
@@ -130,6 +143,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.replaceCurrentItem(with: nil)
         currentTrack = nil
         currentAlbum = nil
+        currentPlaylist = nil
         currentRadioStation = nil
         queue = []
         currentIndex = 0
@@ -496,7 +510,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     private func updateArtworkIfNeeded() {
-        guard let coverArtID = currentAlbum?.coverArtID ?? currentRadioStation?.coverArtID else {
+        guard let coverArtID = currentAlbum?.coverArtID ?? currentPlaylist?.coverArtID ?? currentRadioStation?.coverArtID else {
             nowPlayingArtworkID = nil
             nowPlayingArtwork = nil
             refreshNowPlayingInfo()

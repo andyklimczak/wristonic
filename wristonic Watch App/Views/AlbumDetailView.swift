@@ -9,6 +9,7 @@ struct AlbumDetailView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var showNowPlaying = false
+    @State private var showDeleteDownloadConfirmation = false
 
     var body: some View {
         List {
@@ -33,6 +34,12 @@ struct AlbumDetailView: View {
         }
         .navigationDestination(isPresented: $showNowPlaying) {
             NowPlayingView()
+        }
+        .confirmationDialog("Delete downloaded album from this watch?", isPresented: $showDeleteDownloadConfirmation) {
+            Button("Delete Album Download", role: .destructive) {
+                guard let albumDetail else { return }
+                environment.downloadManager.deleteDownloadedAlbum(albumID: albumDetail.album.id)
+            }
         }
     }
 
@@ -128,7 +135,7 @@ struct AlbumDetailView: View {
 
             if environment.downloadManager.hasLocalContent(albumID: albumDetail.album.id) {
                 Button("Delete Downloaded Album", role: .destructive) {
-                    environment.downloadManager.deleteDownloadedAlbum(albumID: albumDetail.album.id)
+                    showDeleteDownloadConfirmation = true
                 }
             }
 

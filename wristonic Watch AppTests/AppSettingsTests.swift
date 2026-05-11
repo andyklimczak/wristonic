@@ -17,6 +17,7 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: data)
 
         XCTAssertTrue(settings.showInternetRadio)
+        XCTAssertTrue(settings.showPlaylists)
         XCTAssertEqual(settings.albumSortMode, .alphabeticalByName)
         XCTAssertFalse(settings.isRepeatingAlbum)
     }
@@ -58,5 +59,7 @@ final class AppSettingsTests: XCTestCase {
         let snapshot = try JSONDecoder().decode(CachedLibrarySnapshot.self, from: data)
 
         XCTAssertEqual(snapshot.internetRadioStations, [])
+        XCTAssertEqual(snapshot.playlists, [])
+        XCTAssertEqual(snapshot.playlistDetails, [:])
     }
 }

@@ -106,6 +106,29 @@ final class SubsonicClient {
         }
     }
 
+    func playlists() async throws -> [PlaylistSummary] {
+        let root = try await requestDictionary(path: "getPlaylists")
+        guard let playlistsContainer = root["playlists"] as? [String: Any] else {
+            throw SubsonicClientError.missingPayload("playlists")
+        }
+        return Self.dictionaryArray(from: playlistsContainer["playlist"])
+            .map(Self.parsePlaylistSummary)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    func playlist(id: String) async throws -> PlaylistDetail {
+        let root = try await requestDictionary(path: "getPlaylist", queryItems: [URLQueryItem(name: "id", value: id)])
+        guard let playlist = root["playlist"] as? [String: Any] else {
+            throw SubsonicClientError.missingPayload("playlist")
+        }
+
+        let summary = Self.parsePlaylistSummary(playlist)
+        let tracks = Self.dictionaryArray(from: playlist["entry"]).map {
+            Self.parsePlaylistTrack($0, playlist: summary)
+        }
+        return PlaylistDetail(playlist: summary, tracks: tracks)
+    }
+
     func internetRadioStations() async throws -> [InternetRadioStation] {
         let root = try await requestDictionary(path: "getInternetRadioStations", timeoutInterval: 8)
         guard let container = root["internetRadioStations"] as? [String: Any] else {
@@ -238,7 +261,7 @@ final class SubsonicClient {
     private static func parseTrack(_ dictionary: [String: Any], album: AlbumSummary) -> Track {
         Track(
             id: stringValue(from: dictionary["id"]) ?? UUID().uuidString,
-            albumID: stringValue(from: dictionary["parent"]) ?? album.id,
+            albumID: stringValue(from: dictionary["albumId"]) ?? stringValue(from: dictionary["parent"]) ?? album.id,
             title: stringValue(from: dictionary["title"]) ?? "Unknown Track",
             artistID: stringValue(from: dictionary["artistId"]) ?? album.artistID,
             artistName: stringValue(from: dictionary["artist"]) ?? album.artistName,
@@ -250,6 +273,35 @@ final class SubsonicClient {
             suffix: stringValue(from: dictionary["suffix"]),
             path: stringValue(from: dictionary["path"])
         )
+    }
+
+    private static func parsePlaylistSummary(_ dictionary: [String: Any]) -> PlaylistSummary {
+        PlaylistSummary(
+            id: stringValue(from: dictionary["id"]) ?? UUID().uuidString,
+            name: stringValue(from: dictionary["name"]) ?? "Untitled Playlist",
+            owner: stringValue(from: dictionary["owner"]),
+            songCount: intValue(from: dictionary["songCount"]) ?? intValue(from: dictionary["entryCount"]) ?? 0,
+            duration: doubleValue(from: dictionary["duration"]),
+            coverArtID: stringValue(from: dictionary["coverArt"]),
+            createdAt: dateValue(from: dictionary["created"]),
+            changedAt: dateValue(from: dictionary["changed"])
+        )
+    }
+
+    private static func parsePlaylistTrack(_ dictionary: [String: Any], playlist: PlaylistSummary) -> Track {
+        let albumID = stringValue(from: dictionary["albumId"]) ?? stringValue(from: dictionary["parent"]) ?? playlist.id
+        let album = AlbumSummary(
+            id: albumID,
+            name: stringValue(from: dictionary["album"]) ?? playlist.name,
+            artistID: stringValue(from: dictionary["artistId"]) ?? "",
+            artistName: stringValue(from: dictionary["artist"]) ?? playlist.owner ?? "",
+            coverArtID: stringValue(from: dictionary["coverArt"]),
+            songCount: 0,
+            duration: nil,
+            year: intValue(from: dictionary["year"]),
+            createdAt: nil
+        )
+        return parseTrack(dictionary, album: album)
     }
 
     private static func parseInternetRadioStation(_ dictionary: [String: Any]) -> InternetRadioStation? {

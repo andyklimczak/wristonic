@@ -4,6 +4,7 @@ struct NowPlayingView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var showAlbumDetail = false
     @State private var showArtistDetail = false
+    @State private var showPlaylistDetail = false
 
     var body: some View {
         List {
@@ -58,7 +59,7 @@ struct NowPlayingView: View {
                         )
 
                         VStack(alignment: .center, spacing: 3) {
-                            Text(track.albumName)
+                            Text(environment.playbackCoordinator.currentPlaylist?.name ?? track.albumName)
                                 .font(.headline)
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -69,7 +70,7 @@ struct NowPlayingView: View {
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text(track.title)
+                            Text(environment.playbackCoordinator.currentPlaylist == nil ? track.title : "\(track.albumName) - \(track.title)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -104,11 +105,16 @@ struct NowPlayingView: View {
 
                 Section("Controls") {
                     if environment.playbackCoordinator.currentRadioStation == nil {
-                        Button(environment.playbackCoordinator.isRepeatingAlbum ? "Repeat Album On" : "Repeat Album Off") {
+                        Button(repeatButtonTitle) {
                             environment.playbackCoordinator.toggleRepeatAlbum()
                         }
                     }
-                    if environment.playbackCoordinator.currentAlbum != nil {
+                    if environment.playbackCoordinator.currentPlaylist != nil {
+                        Button("Go To Playlist") {
+                            showPlaylistDetail = true
+                        }
+                    }
+                    if currentAlbum != nil {
                         Button("Go To Album") {
                             showAlbumDetail = true
                         }
@@ -131,8 +137,13 @@ struct NowPlayingView: View {
         }
         .navigationTitle("Now Playing")
         .navigationDestination(isPresented: $showAlbumDetail) {
-            if let album = environment.playbackCoordinator.currentAlbum {
+            if let album = currentAlbum {
                 AlbumDetailView(albumID: album.id, initialAlbum: album)
+            }
+        }
+        .navigationDestination(isPresented: $showPlaylistDetail) {
+            if let playlist = environment.playbackCoordinator.currentPlaylist {
+                PlaylistDetailView(playlistID: playlist.id, initialPlaylist: playlist)
             }
         }
         .navigationDestination(isPresented: $showArtistDetail) {
@@ -149,11 +160,42 @@ struct NowPlayingView: View {
         return ArtistSummary(id: track.artistID, name: track.artistName, albumCount: 0)
     }
 
-    private func nowPlayingCoverArtURL() -> URL? {
-        guard let album = environment.playbackCoordinator.currentAlbum else {
+    private var currentAlbum: AlbumSummary? {
+        if let album = environment.playbackCoordinator.currentAlbum {
+            return album
+        }
+        guard let track = environment.playbackCoordinator.currentTrack else {
             return nil
         }
-        return preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID)
+        return AlbumSummary(
+            id: track.albumID,
+            name: track.albumName,
+            artistID: track.artistID,
+            artistName: track.artistName,
+            coverArtID: nil,
+            songCount: 0,
+            duration: nil,
+            year: nil,
+            createdAt: nil
+        )
+    }
+
+    private var repeatButtonTitle: String {
+        let noun = environment.playbackCoordinator.currentPlaylist == nil ? "Album" : "Playlist"
+        return environment.playbackCoordinator.isRepeatingAlbum ? "Repeat \(noun) On" : "Repeat \(noun) Off"
+    }
+
+    private func nowPlayingCoverArtURL() -> URL? {
+        if let album = environment.playbackCoordinator.currentAlbum {
+            return preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID)
+        }
+        if let playlist = environment.playbackCoordinator.currentPlaylist {
+            if let localURL = environment.downloadManager.localPlaylistCoverArtURL(for: playlist.id) {
+                return localURL
+            }
+            return radioCoverArtURL(for: playlist.coverArtID)
+        }
+        return nil
     }
 
     private func radioCoverArtURL(for coverArtID: String?) -> URL? {

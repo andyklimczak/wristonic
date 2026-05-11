@@ -36,6 +36,19 @@ final class wristonic_Watch_AppUITests: XCTestCase {
     }
 
     @MainActor
+    func testBrowsePlaylistsInDemoMode() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["WRISTONIC_DEMO_MODE"] = "1"
+        app.launch()
+
+        tapButton(startingWith: "Playlists", in: app)
+        let playlistButton = button(startingWith: "Run", in: app)
+        XCTAssertTrue(playlistButton.waitForExistence(timeout: 5))
+        playlistButton.tap()
+        XCTAssertTrue(button(startingWith: "Play Playlist", in: app).waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testSettingsDownloadsScreenShowsSeededAlbum() throws {
         let app = XCUIApplication()
         app.launchEnvironment["WRISTONIC_DEMO_MODE"] = "1"

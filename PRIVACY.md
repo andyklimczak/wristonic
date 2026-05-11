@@ -18,7 +18,7 @@ The app may process the following information in order to work:
 - Server address
 - Username
 - Password
-- Library metadata returned by your server, such as artists, albums, tracks, cover art, and internet radio stations
+- Library metadata returned by your server, such as artists, albums, playlists, tracks, cover art, and internet radio stations
 - Playback state, playback history, and playback reporting data
 - Downloaded media and related local file metadata
 - App settings such as bitrate, offline-only mode, and storage limits

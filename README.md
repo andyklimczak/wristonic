@@ -11,10 +11,10 @@ If you use the app, App Store reviews are appreciated.
 ## Features
 
 - Connect to a Subsonic-compatible server from Apple Watch
-- Browse artists and albums
+- Browse artists, albums, and playlists
 - View album details and start playback
 - See now playing state and playback progress
-- Download albums for offline listening
+- Download albums and playlists for offline listening, with shared song storage
 - Set a storage cap and offline-only playback mode
 - Optionally show internet radio stations
 
@@ -25,6 +25,8 @@ If you use the app, App Store reviews are appreciated.
 | ![Main](<screenshots/main.png>) | ![Artists](<screenshots/artists.png>) |
 | Albums | Album Detail |
 | ![Albums](<screenshots/albums.png>) | ![Album Detail](<screenshots/album detail.png>) |
+| Playlists | Playlist Detail |
+| ![Playlists](<screenshots/playlists.png>) | ![Playlist Detail](<screenshots/playlist detail.png>) |
 | Currently Playing |  |
 | ![Currently Playing](<screenshots/currently playing.png>) |  |
 

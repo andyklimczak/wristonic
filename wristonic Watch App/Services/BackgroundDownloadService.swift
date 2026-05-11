@@ -10,8 +10,9 @@ protocol DownloadServing {
 
 final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, DownloadServing {
     static let shared = BackgroundDownloadService()
+    static let sessionIdentifier = "\(Bundle.main.bundleIdentifier ?? "com.andyklimczak.wristonic.watchkitapp").background-downloads"
 
-    private let sessionIdentifier = "com.andy.wristonic.background-downloads"
+    private let sessionIdentifier = BackgroundDownloadService.sessionIdentifier
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
         configuration.isDiscretionary = false
@@ -24,7 +25,7 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
     private var continuations: [Int: CheckedContinuation<URL, Error>] = [:]
     private var stagedFiles: [Int: URL] = [:]
     private var progressHandlers: [Int: @Sendable (Int64, Int64, Double) -> Void] = [:]
-    private var taskStartDates: [Int: Date] = [:]
+    private var progressSamples: [Int: (bytes: Int64, date: Date)] = [:]
     private var refreshTasks: [WKURLSessionRefreshBackgroundTask] = []
 
     func download(
@@ -36,7 +37,6 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
             lock.lock()
             continuations[task.taskIdentifier] = continuation
             progressHandlers[task.taskIdentifier] = onProgress
-            taskStartDates[task.taskIdentifier] = Date()
             lock.unlock()
             task.resume()
         }
@@ -99,17 +99,24 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
+        let now = Date()
         lock.lock()
         let handler = progressHandlers[downloadTask.taskIdentifier]
-        let startDate = taskStartDates[downloadTask.taskIdentifier]
+        let lastSample = progressSamples[downloadTask.taskIdentifier]
+        progressSamples[downloadTask.taskIdentifier] = (totalBytesWritten, now)
         lock.unlock()
 
-        guard let handler, let startDate else {
+        guard let handler else {
             return
         }
 
-        let elapsed = max(Date().timeIntervalSince(startDate), 0.25)
-        let bytesPerSecond = Double(totalBytesWritten) / elapsed
+        let bytesPerSecond: Double
+        if let lastSample, totalBytesWritten >= lastSample.bytes {
+            let elapsed = max(now.timeIntervalSince(lastSample.date), 0.25)
+            bytesPerSecond = Double(totalBytesWritten - lastSample.bytes) / elapsed
+        } else {
+            bytesPerSecond = 0
+        }
         handler(totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond)
     }
 
@@ -117,7 +124,7 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
         lock.lock()
         let continuation = continuations.removeValue(forKey: taskIdentifier)
         progressHandlers.removeValue(forKey: taskIdentifier)
-        taskStartDates.removeValue(forKey: taskIdentifier)
+        progressSamples.removeValue(forKey: taskIdentifier)
         if case .failure = result, let stagedFile = stagedFiles.removeValue(forKey: taskIdentifier) {
             try? FileManager.default.removeItem(at: stagedFile)
         }

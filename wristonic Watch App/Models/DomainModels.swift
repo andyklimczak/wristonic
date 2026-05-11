@@ -104,6 +104,24 @@ struct AlbumDetail: Identifiable, Codable, Hashable {
     var id: String { album.id }
 }
 
+struct PlaylistSummary: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var owner: String?
+    var songCount: Int
+    var duration: TimeInterval?
+    var coverArtID: String?
+    var createdAt: Date?
+    var changedAt: Date?
+}
+
+struct PlaylistDetail: Identifiable, Codable, Hashable {
+    var playlist: PlaylistSummary
+    var tracks: [Track]
+
+    var id: String { playlist.id }
+}
+
 struct InternetRadioStation: Identifiable, Codable, Hashable {
     var id: String
     var name: String
@@ -148,6 +166,7 @@ struct AppSettings: Codable, Equatable {
     var allowInsecureConnections: Bool = false
     var storageCapGB: Int = 8
     var offlineOnly: Bool = false
+    var showPlaylists: Bool = true
     var showInternetRadio: Bool = true
     var albumSortMode: AlbumSortMode = .alphabeticalByName
     var isRepeatingAlbum: Bool = false
@@ -162,6 +181,7 @@ struct AppSettings: Codable, Equatable {
         case allowInsecureConnections
         case storageCapGB
         case offlineOnly
+        case showPlaylists
         case showInternetRadio
         case albumSortMode
         case isRepeatingAlbum
@@ -175,6 +195,7 @@ struct AppSettings: Codable, Equatable {
         allowInsecureConnections = try container.decodeIfPresent(Bool.self, forKey: .allowInsecureConnections) ?? false
         storageCapGB = try container.decodeIfPresent(Int.self, forKey: .storageCapGB) ?? 8
         offlineOnly = try container.decodeIfPresent(Bool.self, forKey: .offlineOnly) ?? false
+        showPlaylists = try container.decodeIfPresent(Bool.self, forKey: .showPlaylists) ?? true
         showInternetRadio = try container.decodeIfPresent(Bool.self, forKey: .showInternetRadio) ?? true
         albumSortMode = try container.decodeIfPresent(AlbumSortMode.self, forKey: .albumSortMode) ?? .alphabeticalByName
         isRepeatingAlbum = try container.decodeIfPresent(Bool.self, forKey: .isRepeatingAlbum) ?? false
@@ -185,6 +206,89 @@ struct DownloadedTrackRecord: Codable, Hashable {
     var trackID: String
     var relativePath: String
     var bytes: Int64
+    var ownerKeys: Set<String> = []
+
+    private enum CodingKeys: String, CodingKey {
+        case trackID
+        case relativePath
+        case bytes
+        case ownerKeys
+    }
+
+    init(trackID: String, relativePath: String, bytes: Int64, ownerKeys: Set<String> = []) {
+        self.trackID = trackID
+        self.relativePath = relativePath
+        self.bytes = bytes
+        self.ownerKeys = ownerKeys
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        trackID = try container.decode(String.self, forKey: .trackID)
+        relativePath = try container.decode(String.self, forKey: .relativePath)
+        bytes = try container.decode(Int64.self, forKey: .bytes)
+        ownerKeys = try container.decodeIfPresent(Set<String>.self, forKey: .ownerKeys) ?? []
+    }
+}
+
+struct PlaylistDownloadRecord: Identifiable, Codable, Hashable {
+    var playlist: PlaylistSummary
+    var tracks: [Track]
+    var downloadedTrackIDs: [String]
+    var localCoverArtRelativePath: String?
+    var coverArtBytes: Int64
+    var state: DownloadState
+    var downloadedAt: Date?
+    var totalBytes: Int64
+
+    var id: String { playlist.id }
+
+    var hasDownloadedContent: Bool {
+        !downloadedTrackIDs.isEmpty
+    }
+
+    init(
+        playlist: PlaylistSummary,
+        tracks: [Track],
+        downloadedTrackIDs: [String],
+        localCoverArtRelativePath: String? = nil,
+        coverArtBytes: Int64 = 0,
+        state: DownloadState,
+        downloadedAt: Date?,
+        totalBytes: Int64
+    ) {
+        self.playlist = playlist
+        self.tracks = tracks
+        self.downloadedTrackIDs = downloadedTrackIDs
+        self.localCoverArtRelativePath = localCoverArtRelativePath
+        self.coverArtBytes = coverArtBytes
+        self.state = state
+        self.downloadedAt = downloadedAt
+        self.totalBytes = totalBytes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case playlist
+        case tracks
+        case downloadedTrackIDs
+        case localCoverArtRelativePath
+        case coverArtBytes
+        case state
+        case downloadedAt
+        case totalBytes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        playlist = try container.decode(PlaylistSummary.self, forKey: .playlist)
+        tracks = try container.decode([Track].self, forKey: .tracks)
+        downloadedTrackIDs = try container.decode([String].self, forKey: .downloadedTrackIDs)
+        localCoverArtRelativePath = try container.decodeIfPresent(String.self, forKey: .localCoverArtRelativePath)
+        coverArtBytes = try container.decodeIfPresent(Int64.self, forKey: .coverArtBytes) ?? 0
+        state = try container.decode(DownloadState.self, forKey: .state)
+        downloadedAt = try container.decodeIfPresent(Date.self, forKey: .downloadedAt)
+        totalBytes = try container.decode(Int64.self, forKey: .totalBytes)
+    }
 }
 
 struct PlaybackCacheRecord: Codable, Hashable {
@@ -230,6 +334,8 @@ struct CachedLibrarySnapshot: Codable, Equatable {
     var albumsBySort: [String: [AlbumSummary]]
     var albumsByArtist: [String: [AlbumSummary]]
     var albumDetails: [String: AlbumDetail]
+    var playlists: [PlaylistSummary]
+    var playlistDetails: [String: PlaylistDetail]
     var internetRadioStations: [InternetRadioStation]
     var lastUpdatedAt: Date?
 
@@ -238,6 +344,8 @@ struct CachedLibrarySnapshot: Codable, Equatable {
         albumsBySort: [String: [AlbumSummary]],
         albumsByArtist: [String: [AlbumSummary]],
         albumDetails: [String: AlbumDetail],
+        playlists: [PlaylistSummary],
+        playlistDetails: [String: PlaylistDetail],
         internetRadioStations: [InternetRadioStation],
         lastUpdatedAt: Date?
     ) {
@@ -245,6 +353,8 @@ struct CachedLibrarySnapshot: Codable, Equatable {
         self.albumsBySort = albumsBySort
         self.albumsByArtist = albumsByArtist
         self.albumDetails = albumDetails
+        self.playlists = playlists
+        self.playlistDetails = playlistDetails
         self.internetRadioStations = internetRadioStations
         self.lastUpdatedAt = lastUpdatedAt
     }
@@ -254,6 +364,8 @@ struct CachedLibrarySnapshot: Codable, Equatable {
         case albumsBySort
         case albumsByArtist
         case albumDetails
+        case playlists
+        case playlistDetails
         case internetRadioStations
         case lastUpdatedAt
     }
@@ -264,6 +376,8 @@ struct CachedLibrarySnapshot: Codable, Equatable {
         albumsBySort = try container.decodeIfPresent([String: [AlbumSummary]].self, forKey: .albumsBySort) ?? [:]
         albumsByArtist = try container.decodeIfPresent([String: [AlbumSummary]].self, forKey: .albumsByArtist) ?? [:]
         albumDetails = try container.decodeIfPresent([String: AlbumDetail].self, forKey: .albumDetails) ?? [:]
+        playlists = try container.decodeIfPresent([PlaylistSummary].self, forKey: .playlists) ?? []
+        playlistDetails = try container.decodeIfPresent([String: PlaylistDetail].self, forKey: .playlistDetails) ?? [:]
         internetRadioStations = try container.decodeIfPresent([InternetRadioStation].self, forKey: .internetRadioStations) ?? []
         lastUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .lastUpdatedAt)
     }
@@ -273,6 +387,8 @@ struct CachedLibrarySnapshot: Codable, Equatable {
         albumsBySort: [:],
         albumsByArtist: [:],
         albumDetails: [:],
+        playlists: [],
+        playlistDetails: [:],
         internetRadioStations: [],
         lastUpdatedAt: nil
     )

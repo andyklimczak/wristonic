@@ -129,4 +129,33 @@ final class SubsonicClientTests: XCTestCase {
         XCTAssertEqual(stations.first?.homePageURL?.host(), "demo.navidrome.local")
         XCTAssertEqual(stations.first?.coverArtID, "cover-1")
     }
+
+    func testPlaylistsRequestAndDecodePayload() async throws {
+        let transport = RecordingTransport()
+        transport.dataResponses["getPlaylists"] = Data(DemoMode.playlistsPayload.utf8)
+
+        let playlists = try await makeClient(using: transport).playlists()
+
+        XCTAssertEqual(playlists.map(\.name), ["Run", "Short Mix"])
+        XCTAssertEqual(playlists.first?.id, "playlist-1")
+        XCTAssertEqual(playlists.first?.owner, "demo")
+        XCTAssertEqual(playlists.first?.songCount, 4)
+        XCTAssertEqual(playlists.first?.coverArtID, "cover-1")
+        XCTAssertEqual(transport.requests.last?.url?.lastPathComponent, "getPlaylists.view")
+    }
+
+    func testPlaylistDetailPreservesOrderAndPrefersAlbumID() async throws {
+        let transport = RecordingTransport()
+        transport.dataResponses["getPlaylist"] = Data(DemoMode.playlistPayloads["playlist-1"]!.utf8)
+
+        let detail = try await makeClient(using: transport).playlist(id: "playlist-1")
+
+        XCTAssertEqual(detail.playlist.name, "Run")
+        XCTAssertEqual(detail.tracks.map(\.id), ["track-1", "track-2", "track-3", "track-4"])
+        XCTAssertEqual(detail.tracks.first?.albumID, "album-1")
+
+        let components = URLComponents(url: try XCTUnwrap(transport.requests.last?.url), resolvingAgainstBaseURL: false)
+        let queryItems = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(queryItems["id"], "playlist-1")
+    }
 }

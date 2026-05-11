@@ -45,6 +45,7 @@ final class AppEnvironment: ObservableObject {
         let settingsStore = SettingsStore()
         let cacheStore = JSONFileStore<CachedLibrarySnapshot>(url: try AppPaths.storeFile(named: "cache.json"))
         let recordsStore = JSONFileStore<[DownloadRecord]>(url: try AppPaths.storeFile(named: "downloads.json"))
+        let playlistRecordsStore = JSONFileStore<[PlaylistDownloadRecord]>(url: try AppPaths.storeFile(named: "playlist-downloads.json"))
         let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: try AppPaths.storeFile(named: "playback-history.json"))
         let playbackCacheStore = JSONFileStore<[PlaybackCacheRecord]>(url: try AppPaths.storeFile(named: "playback-cache.json"))
         let playbackScrobbleStore = JSONFileStore<[PendingPlaybackScrobble]>(url: try AppPaths.storeFile(named: "playback-scrobbles.json"))
@@ -66,6 +67,7 @@ final class AppEnvironment: ObservableObject {
             settingsStore: settingsStore,
             recordsStore: recordsStore,
             historyStore: historyStore,
+            playlistRecordsStore: playlistRecordsStore,
             downloadsDirectory: downloadsDirectory,
             clientProvider: {
                 try environment.makeClient()
@@ -139,6 +141,7 @@ final class AppEnvironment: ObservableObject {
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
         let cacheStore = JSONFileStore<CachedLibrarySnapshot>(url: tempRoot.appendingPathComponent("cache.json"))
         let recordsStore = JSONFileStore<[DownloadRecord]>(url: tempRoot.appendingPathComponent("downloads.json"))
+        let playlistRecordsStore = JSONFileStore<[PlaylistDownloadRecord]>(url: tempRoot.appendingPathComponent("playlist-downloads.json"))
         let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: tempRoot.appendingPathComponent("history.json"))
         let playbackCacheStore = JSONFileStore<[PlaybackCacheRecord]>(url: tempRoot.appendingPathComponent("playback-cache.json"))
         let playbackScrobbleStore = JSONFileStore<[PendingPlaybackScrobble]>(url: tempRoot.appendingPathComponent("playback-scrobbles.json"))
@@ -198,6 +201,7 @@ final class AppEnvironment: ObservableObject {
             settingsStore: settingsStore,
             recordsStore: recordsStore,
             historyStore: historyStore,
+            playlistRecordsStore: playlistRecordsStore,
             downloadsDirectory: downloadsDirectory,
             clientProvider: {
                 try environment.makeClient()

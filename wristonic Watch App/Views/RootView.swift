@@ -25,6 +25,14 @@ struct RootView: View {
                             Label("Albums", systemImage: "square.stack")
                         }
 
+                        if environment.settingsStore.settings.showPlaylists {
+                            NavigationLink {
+                                PlaylistsView()
+                            } label: {
+                                Label("Playlists", systemImage: "music.note.list")
+                            }
+                        }
+
                         if environment.settingsStore.settings.showInternetRadio {
                             NavigationLink {
                                 InternetRadioView()
