@@ -53,6 +53,7 @@
 		A120ED322F7E086700D10F11 /* wristonic Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "wristonic Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A120ED412F7E086B00D10F11 /* wristonic Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "wristonic Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A120ED4B2F7E086B00D10F11 /* wristonic Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "wristonic Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1E9E5142FCA4D3B000351DC /* wristonic Watch App.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = "wristonic Watch App.xctestplan"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -101,6 +102,7 @@
 		A120ED252F7E086600D10F11 = {
 			isa = PBXGroup;
 			children = (
+				A1E9E5142FCA4D3B000351DC /* wristonic Watch App.xctestplan */,
 				A120ED362F7E086700D10F11 /* wristonic Watch App */,
 				A120ED442F7E086B00D10F11 /* wristonic Watch AppTests */,
 				A120ED4E2F7E086B00D10F11 /* wristonic Watch AppUITests */,
@@ -618,7 +620,7 @@
 				"CODE_SIGNING_ALLOWED[sdk=watchsimulator*]" = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4R7T9GNQX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.andy.wristonic-Watch-AppUITests";
@@ -641,7 +643,7 @@
 				"CODE_SIGNING_ALLOWED[sdk=watchsimulator*]" = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4R7T9GNQX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.andy.wristonic-Watch-AppUITests";

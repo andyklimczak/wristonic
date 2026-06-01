@@ -30,6 +30,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private var timeControlStatusObserver: NSKeyValueObservation?
     private var itemEndObserver: NSObjectProtocol?
     private var itemFailureObserver: NSObjectProtocol?
+    private var audioInterruptionObserver: NSObjectProtocol?
     private var itemStatusObserver: NSKeyValueObservation?
     private var currentTrackListenSeconds: TimeInterval = 0
     private var currentSourceCandidates: [URL] = []
@@ -37,6 +38,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private var nowPlayingArtworkID: String?
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var shouldPlayAlbumStartHaptic = false
+    private var shouldResumePlaybackAfterInterruption = false
 
     init(
         downloadManager: DownloadManager,
@@ -65,6 +67,9 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         }
         if let itemFailureObserver {
             NotificationCenter.default.removeObserver(itemFailureObserver)
+        }
+        if let audioInterruptionObserver {
+            NotificationCenter.default.removeObserver(audioInterruptionObserver)
         }
         timeControlStatusObserver?.invalidate()
         itemStatusObserver?.invalidate()
@@ -114,6 +119,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
         activateAudioSession()
+        shouldResumePlaybackAfterInterruption = false
         player.play()
         isPlaying = player.timeControlStatus == .playing
         isBuffering = !isPlaying
@@ -125,8 +131,10 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             player.pause()
             isPlaying = false
             isBuffering = false
+            shouldResumePlaybackAfterInterruption = false
         } else if currentTrack != nil || currentRadioStation != nil {
             activateAudioSession()
+            shouldResumePlaybackAfterInterruption = false
             player.play()
             let status = player.timeControlStatus
             isPlaying = status == .playing
@@ -155,6 +163,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         currentTrackListenSeconds = 0
         currentSourceCandidates = []
         candidateIndex = 0
+        shouldResumePlaybackAfterInterruption = false
         nowPlayingArtworkID = nil
         nowPlayingArtwork = nil
         refreshNowPlayingInfo()
@@ -286,6 +295,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
         activateAudioSession()
+        shouldResumePlaybackAfterInterruption = false
         player.play()
         isPlaying = true
         isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
@@ -330,6 +340,16 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                     playAlbumStartHapticIfNeeded()
                 }
                 refreshNowPlayingInfo()
+            }
+        }
+
+        audioInterruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor [weak self] in
+                self?.handleAudioSessionInterruption(notification)
             }
         }
     }
@@ -451,6 +471,43 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         }
     }
 
+    private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
+            return
+        }
+
+        switch type {
+        case .began:
+            shouldResumePlaybackAfterInterruption = isPlaying || isBuffering || player.rate > 0
+            isPlaying = false
+            isBuffering = false
+            refreshNowPlayingInfo()
+
+        case .ended:
+            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
+            let shouldResume = shouldResumePlaybackAfterInterruption && options.contains(.shouldResume)
+            shouldResumePlaybackAfterInterruption = false
+
+            guard shouldResume, currentTrack != nil || currentRadioStation != nil else {
+                refreshNowPlayingInfo()
+                return
+            }
+
+            activateAudioSession()
+            player.play()
+
+            let status = player.timeControlStatus
+            isPlaying = status == .playing
+            isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
+            refreshNowPlayingInfo()
+
+        @unknown default:
+            shouldResumePlaybackAfterInterruption = false
+        }
+    }
+
     private func configureRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.playCommand.isEnabled = true
@@ -553,6 +610,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
         if !isPlaying && !isBuffering {
             activateAudioSession()
+            shouldResumePlaybackAfterInterruption = false
             player.play()
             let status = player.timeControlStatus
             isPlaying = status == .playing
@@ -569,6 +627,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             player.pause()
             isPlaying = false
             isBuffering = false
+            shouldResumePlaybackAfterInterruption = false
             refreshNowPlayingInfo()
         }
         return .success

@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "E5372DB1-E112-47B8-AE35-8AE706055FEF",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:wristonic.xcodeproj",
+      "identifier" : "A120ED312F7E086700D10F11",
+      "name" : "wristonic Watch App"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:wristonic.xcodeproj",
+        "identifier" : "A120ED402F7E086B00D10F11",
+        "name" : "wristonic Watch AppTests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:wristonic.xcodeproj",
+        "identifier" : "A120ED4A2F7E086B00D10F11",
+        "name" : "wristonic Watch AppUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
