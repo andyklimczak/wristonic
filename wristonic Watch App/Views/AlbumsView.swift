@@ -58,15 +58,33 @@ struct AlbumsView: View {
         .refreshable {
             await loadAlbums(forceRefresh: true)
         }
-        .onChange(of: environment.settingsStore.settings.albumSortMode) { _, newSortMode in
-            Task { await loadAlbums(forceRefresh: newSortMode != .alphabeticalByName) }
+        .onChange(of: environment.settingsStore.settings.albumSortMode) { _, _ in
+            Task { await loadAlbums() }
         }
         .onChange(of: environment.settingsStore.settings.offlineOnly) { _, _ in
             Task { await loadAlbums() }
         }
     }
 
-    private func loadAlbums(forceRefresh: Bool = false) async {
+    private func loadAlbums(forceRefresh: Bool = true) async {
+        guard forceRefresh, !environment.settingsStore.settings.offlineOnly else {
+            await loadAlbumsFromRepository(forceRefresh: forceRefresh)
+            return
+        }
+
+        syncAlbumsFromCache()
+        isLoading = albums.isEmpty
+        do {
+            try await environment.repository.refreshAlbumsInBackground(sortMode: sortMode)?.value
+            syncAlbumsFromCache()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func loadAlbumsFromRepository(forceRefresh: Bool) async {
         isLoading = true
         do {
             albums = try await environment.repository.albums(sortMode: sortMode, forceRefresh: forceRefresh)
@@ -75,6 +93,12 @@ struct AlbumsView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func syncAlbumsFromCache() {
+        if let cached = environment.repository.cachedSnapshot.albumsBySort[sortMode.rawValue], !cached.isEmpty {
+            albums = cached
+        }
     }
 
     private var sortModeBinding: Binding<AlbumSortMode> {

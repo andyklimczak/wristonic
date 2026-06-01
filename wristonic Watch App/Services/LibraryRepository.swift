@@ -5,11 +5,18 @@ import Foundation
 final class LibraryRepository: ObservableObject {
     @Published private(set) var cachedSnapshot: CachedLibrarySnapshot = .empty
 
+    private enum RefreshKey: Hashable {
+        case artists
+        case albums(String)
+        case artistAlbums(String)
+    }
+
     private let cacheStore: JSONFileStore<CachedLibrarySnapshot>
     private let clientProvider: () throws -> SubsonicClient
     private let downloadRecordsProvider: () -> [DownloadRecord]
     private let settingsStore: SettingsStore
     private var cacheSaveTask: Task<Void, Never>?
+    private var refreshTasks: [RefreshKey: Task<Void, Error>] = [:]
 
     init(
         cacheStore: JSONFileStore<CachedLibrarySnapshot>,
@@ -32,8 +39,40 @@ final class LibraryRepository: ObservableObject {
     func clearCache() async {
         _ = await cacheSaveTask?.result
         cacheSaveTask = nil
+        refreshTasks.values.forEach { $0.cancel() }
+        refreshTasks = [:]
         cachedSnapshot = .empty
         try? await cacheStore.deleteFile()
+    }
+
+    @discardableResult
+    func refreshArtistsInBackground() -> Task<Void, Error>? {
+        guard !settingsStore.settings.offlineOnly else {
+            return nil
+        }
+        return refreshTask(for: .artists) { repository in
+            _ = try await repository.artists(forceRefresh: true)
+        }
+    }
+
+    @discardableResult
+    func refreshAlbumsInBackground(sortMode: AlbumSortMode) -> Task<Void, Error>? {
+        guard !settingsStore.settings.offlineOnly else {
+            return nil
+        }
+        return refreshTask(for: .albums(sortMode.rawValue)) { repository in
+            _ = try await repository.albums(sortMode: sortMode, forceRefresh: true)
+        }
+    }
+
+    @discardableResult
+    func refreshArtistAlbumsInBackground(artistID: String) -> Task<Void, Error>? {
+        guard !settingsStore.settings.offlineOnly else {
+            return nil
+        }
+        return refreshTask(for: .artistAlbums(artistID)) { repository in
+            _ = try await repository.artistAlbums(artistID: artistID, forceRefresh: true)
+        }
     }
 
     func artists(forceRefresh: Bool = false) async throws -> [ArtistSummary] {
@@ -43,11 +82,18 @@ final class LibraryRepository: ObservableObject {
         if !forceRefresh, !cachedSnapshot.artists.isEmpty {
             return cachedSnapshot.artists
         }
-        let artists = try await clientProvider().artists()
-        cachedSnapshot.artists = artists
-        cachedSnapshot.lastUpdatedAt = Date()
-        persistCachedSnapshot()
-        return artists
+        do {
+            let artists = try await clientProvider().artists()
+            cachedSnapshot.artists = artists
+            cachedSnapshot.lastUpdatedAt = Date()
+            persistCachedSnapshot()
+            return artists
+        } catch {
+            if !cachedSnapshot.artists.isEmpty {
+                return cachedSnapshot.artists
+            }
+            throw error
+        }
     }
 
     func albums(sortMode: AlbumSortMode, forceRefresh: Bool = false) async throws -> [AlbumSummary] {
@@ -57,11 +103,18 @@ final class LibraryRepository: ObservableObject {
         if !forceRefresh, let cached = cachedSnapshot.albumsBySort[sortMode.rawValue], !cached.isEmpty {
             return cached
         }
-        let albums = try await clientProvider().albums(sortMode: sortMode)
-        cachedSnapshot.albumsBySort[sortMode.rawValue] = albums
-        cachedSnapshot.lastUpdatedAt = Date()
-        persistCachedSnapshot()
-        return albums
+        do {
+            let albums = try await clientProvider().albums(sortMode: sortMode)
+            cachedSnapshot.albumsBySort[sortMode.rawValue] = albums
+            cachedSnapshot.lastUpdatedAt = Date()
+            persistCachedSnapshot()
+            return albums
+        } catch {
+            if let cached = cachedSnapshot.albumsBySort[sortMode.rawValue], !cached.isEmpty {
+                return cached
+            }
+            throw error
+        }
     }
 
     func artistAlbums(artistID: String, forceRefresh: Bool = false) async throws -> [AlbumSummary] {
@@ -74,11 +127,18 @@ final class LibraryRepository: ObservableObject {
         if !forceRefresh, let cached = cachedSnapshot.albumsByArtist[artistID], !cached.isEmpty {
             return cached
         }
-        let albums = try await clientProvider().albums(for: artistID)
-        cachedSnapshot.albumsByArtist[artistID] = albums
-        cachedSnapshot.lastUpdatedAt = Date()
-        persistCachedSnapshot()
-        return albums
+        do {
+            let albums = try await clientProvider().albums(for: artistID)
+            cachedSnapshot.albumsByArtist[artistID] = albums
+            cachedSnapshot.lastUpdatedAt = Date()
+            persistCachedSnapshot()
+            return albums
+        } catch {
+            if let cached = cachedSnapshot.albumsByArtist[artistID], !cached.isEmpty {
+                return cached
+            }
+            throw error
+        }
     }
 
     func albumDetail(albumID: String, forceRefresh: Bool = false) async throws -> AlbumDetail {
@@ -170,6 +230,28 @@ final class LibraryRepository: ObservableObject {
             _ = await previousTask?.result
             try? await cacheStore.save(snapshot)
         }
+    }
+
+    private func refreshTask(
+        for key: RefreshKey,
+        operation: @escaping @MainActor (LibraryRepository) async throws -> Void
+    ) -> Task<Void, Error> {
+        if let existingTask = refreshTasks[key] {
+            return existingTask
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            defer {
+                refreshTasks[key] = nil
+            }
+            try Task.checkCancellation()
+            try await operation(self)
+        }
+        refreshTasks[key] = task
+        return task
     }
 
     private func offlineArtists() -> [ArtistSummary] {

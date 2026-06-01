@@ -56,7 +56,26 @@ struct ArtistsView: View {
         }
     }
 
-    private func loadArtists(forceRefresh: Bool = false) async {
+    private func loadArtists(forceRefresh: Bool = true) async {
+        guard forceRefresh, !environment.settingsStore.settings.offlineOnly else {
+            await loadArtistsFromRepository(forceRefresh: forceRefresh)
+            return
+        }
+
+        syncArtistsFromCache()
+        isLoading = artists.isEmpty
+        do {
+            try await environment.repository.refreshArtistsInBackground()?.value
+            syncArtistsFromCache()
+            errorMessage = nil
+            prefetchArtistArtworkIfNeeded()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func loadArtistsFromRepository(forceRefresh: Bool) async {
         isLoading = true
         do {
             artists = try await environment.repository.artists(forceRefresh: forceRefresh)
@@ -68,6 +87,12 @@ struct ArtistsView: View {
         isLoading = false
     }
 
+    private func syncArtistsFromCache() {
+        if !environment.repository.cachedSnapshot.artists.isEmpty {
+            artists = environment.repository.cachedSnapshot.artists
+        }
+    }
+
     private func prefetchArtistArtworkIfNeeded() {
         guard !environment.settingsStore.settings.offlineOnly else {
             return
@@ -76,9 +101,7 @@ struct ArtistsView: View {
         guard cachedAlbums.isEmpty else {
             return
         }
-        Task {
-            _ = try? await environment.repository.albums(sortMode: .alphabeticalByName)
-        }
+        environment.repository.refreshAlbumsInBackground(sortMode: .alphabeticalByName)
     }
 
     private func sectionKey(for name: String) -> String {
@@ -231,7 +254,25 @@ struct ArtistDetailView: View {
         }
     }
 
-    private func loadAlbums(forceRefresh: Bool = false) async {
+    private func loadAlbums(forceRefresh: Bool = true) async {
+        guard forceRefresh, !environment.settingsStore.settings.offlineOnly else {
+            await loadAlbumsFromRepository(forceRefresh: forceRefresh)
+            return
+        }
+
+        syncAlbumsFromCache()
+        isLoading = albums.isEmpty
+        do {
+            try await environment.repository.refreshArtistAlbumsInBackground(artistID: artist.id)?.value
+            syncAlbumsFromCache()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func loadAlbumsFromRepository(forceRefresh: Bool) async {
         isLoading = true
         do {
             albums = try await environment.repository.artistAlbums(artistID: artist.id, forceRefresh: forceRefresh)
@@ -240,6 +281,12 @@ struct ArtistDetailView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func syncAlbumsFromCache() {
+        if let cached = environment.repository.cachedSnapshot.albumsByArtist[artist.id], !cached.isEmpty {
+            albums = cached
+        }
     }
 
 }
