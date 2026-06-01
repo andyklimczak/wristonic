@@ -5,6 +5,33 @@ import MediaPlayer
 import UIKit
 import WatchKit
 
+struct PlaybackFailureRecovery: Equatable {
+    static let resumeThreshold: TimeInterval = 2
+
+    let candidateIndex: Int
+    let resumeAt: TimeInterval
+
+    static func plan(
+        currentCandidateIndex: Int,
+        candidateCount: Int,
+        elapsed: TimeInterval,
+        playerTime: TimeInterval?
+    ) -> PlaybackFailureRecovery? {
+        guard currentCandidateIndex + 1 < candidateCount else {
+            return nil
+        }
+
+        let positions = [elapsed, playerTime ?? 0].filter { $0.isFinite && $0 > 0 }
+        let bestPosition = positions.max() ?? 0
+        let resumeAt = bestPosition >= resumeThreshold ? bestPosition : 0
+
+        return PlaybackFailureRecovery(
+            candidateIndex: currentCandidateIndex + 1,
+            resumeAt: resumeAt
+        )
+    }
+}
+
 @MainActor
 final class PlaybackCoordinator: NSObject, ObservableObject {
     @Published private(set) var currentTrack: Track?
@@ -281,7 +308,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         playbackCacheManager.primePlaybackQueue(queue, currentIndex: currentIndex, excludingTrackIDs: permanentlyDownloadedTrackIDs)
     }
 
-    private func startCurrentCandidate() async {
+    private func startCurrentCandidate(resumeAt: TimeInterval = 0, reportsNowPlaying: Bool = true) async {
         guard let track = currentTrack else { return }
         guard let url = currentSourceCandidates[safe: candidateIndex] else {
             lastError = "Unable to play \(track.title)."
@@ -296,15 +323,30 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.replaceCurrentItem(with: item)
         activateAudioSession()
         shouldResumePlaybackAfterInterruption = false
+        if resumeAt > 0 {
+            let boundedResumeAt = boundedResumePosition(resumeAt)
+            await player.seek(to: CMTime(seconds: boundedResumeAt, preferredTimescale: 600))
+            elapsed = boundedResumeAt
+            currentTrackListenSeconds = max(currentTrackListenSeconds, boundedResumeAt)
+        }
         player.play()
         isPlaying = true
         isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
         if player.timeControlStatus == .playing {
             playAlbumStartHapticIfNeeded()
         }
-        playbackReportingManager.reportNowPlaying(track: track)
-        playbackReportingManager.flushIfNeeded(force: false)
+        if reportsNowPlaying {
+            playbackReportingManager.reportNowPlaying(track: track)
+            playbackReportingManager.flushIfNeeded(force: false)
+        }
         refreshNowPlayingInfo()
+    }
+
+    private func boundedResumePosition(_ resumeAt: TimeInterval) -> TimeInterval {
+        guard duration > 1 else {
+            return resumeAt
+        }
+        return min(resumeAt, max(duration - 1, 0))
     }
 
     private func configureObservers() {
@@ -427,9 +469,17 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private func handleCurrentItemFailure(_ error: Error?) async {
         guard let track = currentTrack else { return }
 
-        if candidateIndex + 1 < currentSourceCandidates.count {
-            candidateIndex += 1
-            await startCurrentCandidate()
+        let currentPlayerTime = player.currentTime().seconds
+        let recovery = PlaybackFailureRecovery.plan(
+            currentCandidateIndex: candidateIndex,
+            candidateCount: currentSourceCandidates.count,
+            elapsed: elapsed,
+            playerTime: currentPlayerTime.isFinite ? currentPlayerTime : nil
+        )
+
+        if let recovery {
+            candidateIndex = recovery.candidateIndex
+            await startCurrentCandidate(resumeAt: recovery.resumeAt, reportsNowPlaying: false)
             return
         }
 

@@ -69,3 +69,38 @@ final class PlaybackCacheManagerTests: XCTestCase {
         XCTFail("Timed out waiting for condition")
     }
 }
+
+final class PlaybackFailureRecoveryTests: XCTestCase {
+    func testFallbackAfterPlaybackStartedResumesAtCurrentPosition() {
+        let recovery = PlaybackFailureRecovery.plan(
+            currentCandidateIndex: 0,
+            candidateCount: 2,
+            elapsed: 95,
+            playerTime: 100
+        )
+
+        XCTAssertEqual(recovery, PlaybackFailureRecovery(candidateIndex: 1, resumeAt: 100))
+    }
+
+    func testFallbackBeforePlaybackStartsUsesBeginning() {
+        let recovery = PlaybackFailureRecovery.plan(
+            currentCandidateIndex: 0,
+            candidateCount: 2,
+            elapsed: 0.5,
+            playerTime: 0.5
+        )
+
+        XCTAssertEqual(recovery, PlaybackFailureRecovery(candidateIndex: 1, resumeAt: 0))
+    }
+
+    func testFailureWithoutRemainingCandidatesDoesNotRecover() {
+        let recovery = PlaybackFailureRecovery.plan(
+            currentCandidateIndex: 1,
+            candidateCount: 2,
+            elapsed: 100,
+            playerTime: 100
+        )
+
+        XCTAssertNil(recovery)
+    }
+}
