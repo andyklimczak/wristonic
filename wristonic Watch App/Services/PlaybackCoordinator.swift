@@ -390,8 +390,10 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
+            let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             Task { @MainActor [weak self] in
-                self?.handleAudioSessionInterruption(notification)
+                self?.handleAudioSessionInterruption(typeRawValue: rawType, optionsRawValue: rawOptions)
             }
         }
     }
@@ -521,8 +523,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         }
     }
 
-    private func handleAudioSessionInterruption(_ notification: Notification) {
-        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+    private func handleAudioSessionInterruption(typeRawValue: UInt?, optionsRawValue: UInt) {
+        guard let rawType = typeRawValue,
               let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
             return
         }
@@ -535,8 +537,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             refreshNowPlayingInfo()
 
         case .ended:
-            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsRawValue)
             let shouldResume = shouldResumePlaybackAfterInterruption && options.contains(.shouldResume)
             shouldResumePlaybackAfterInterruption = false
 

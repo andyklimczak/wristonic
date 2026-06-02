@@ -1,6 +1,7 @@
 import XCTest
 @testable import wristonic_Watch_App
 
+@MainActor
 final class SubsonicClientTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()

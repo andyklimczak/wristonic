@@ -66,6 +66,7 @@ func makeSettingsStore(name: String, capGB: Int = 8, offlineOnly: Bool = false) 
     return settingsStore
 }
 
+@MainActor
 func makeClient(using transport: Transporting = DemoTransport()) throws -> SubsonicClient {
     SubsonicClient(
         configuration: ServerConfiguration(
