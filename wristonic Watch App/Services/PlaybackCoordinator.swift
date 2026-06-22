@@ -32,6 +32,36 @@ struct PlaybackFailureRecovery: Equatable {
     }
 }
 
+protocol AudioSessionManaging {
+    func activatePlaybackSession() async throws
+}
+
+struct LiveAudioSessionManager: AudioSessionManaging {
+    func activatePlaybackSession() async throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [])
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            session.activate(options: []) { activated, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if activated {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: AudioSessionActivationError.notActivated)
+                }
+            }
+        }
+    }
+}
+
+private enum AudioSessionActivationError: LocalizedError {
+    case notActivated
+
+    var errorDescription: String? {
+        "Session activation failed."
+    }
+}
+
 @MainActor
 final class PlaybackCoordinator: NSObject, ObservableObject {
     @Published private(set) var currentTrack: Track?
@@ -52,6 +82,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private let playbackCacheManager: PlaybackCacheManager
     private let playbackReportingManager: PlaybackReportingManager
     private let settingsStore: SettingsStore
+    private let audioSessionManager: AudioSessionManaging
     private let clientProvider: () throws -> SubsonicClient
     private var timeObserverToken: Any?
     private var timeControlStatusObserver: NSKeyValueObservation?
@@ -72,12 +103,14 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         playbackCacheManager: PlaybackCacheManager,
         playbackReportingManager: PlaybackReportingManager,
         settingsStore: SettingsStore,
+        audioSessionManager: AudioSessionManaging? = nil,
         clientProvider: @escaping () throws -> SubsonicClient
     ) {
         self.downloadManager = downloadManager
         self.playbackCacheManager = playbackCacheManager
         self.playbackReportingManager = playbackReportingManager
         self.settingsStore = settingsStore
+        self.audioSessionManager = audioSessionManager ?? LiveAudioSessionManager()
         self.clientProvider = clientProvider
         super.init()
         isRepeatingAlbum = settingsStore.settings.isRepeatingAlbum
@@ -122,7 +155,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         await playCurrentTrack()
     }
 
-    func play(radioStation: InternetRadioStation) {
+    func play(radioStation: InternetRadioStation) async {
         finalizePlaybackRecord()
         playbackCacheManager.cancelPrefetch()
         currentTrack = nil
@@ -145,7 +178,12 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.automaticallyWaitsToMinimizeStalling = false
         observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
-        activateAudioSession()
+        guard await activateAudioSession() else {
+            isPlaying = false
+            isBuffering = false
+            refreshNowPlayingInfo()
+            return
+        }
         shouldResumePlaybackAfterInterruption = false
         player.play()
         isPlaying = player.timeControlStatus == .playing
@@ -153,19 +191,14 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         refreshNowPlayingInfo()
     }
 
-    func togglePlayback() {
+    func togglePlayback() async {
         if isPlaying || isBuffering {
             player.pause()
             isPlaying = false
             isBuffering = false
             shouldResumePlaybackAfterInterruption = false
         } else if currentTrack != nil || currentRadioStation != nil {
-            activateAudioSession()
-            shouldResumePlaybackAfterInterruption = false
-            player.play()
-            let status = player.timeControlStatus
-            isPlaying = status == .playing
-            isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
+            await resumePlayback()
         }
         refreshNowPlayingInfo()
     }
@@ -321,7 +354,13 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.automaticallyWaitsToMinimizeStalling = true
         observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
-        activateAudioSession()
+        guard await activateAudioSession() else {
+            isPlaying = false
+            isBuffering = false
+            shouldPlayAlbumStartHaptic = false
+            refreshNowPlayingInfo()
+            return
+        }
         shouldResumePlaybackAfterInterruption = false
         if resumeAt > 0 {
             let boundedResumeAt = boundedResumePosition(resumeAt)
@@ -393,7 +432,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             Task { @MainActor [weak self] in
-                self?.handleAudioSessionInterruption(typeRawValue: rawType, optionsRawValue: rawOptions)
+                await self?.handleAudioSessionInterruption(typeRawValue: rawType, optionsRawValue: rawOptions)
             }
         }
     }
@@ -513,17 +552,43 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         }
     }
 
-    private func activateAudioSession() {
+    private func activateAudioSession() async -> Bool {
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
-            try session.setActive(true)
+            try await audioSessionManager.activatePlaybackSession()
+            lastError = nil
+            return true
         } catch {
-            lastError = error.localizedDescription
+            lastError = friendlyAudioSessionMessage(for: error)
+            return false
         }
     }
 
-    private func handleAudioSessionInterruption(typeRawValue: UInt?, optionsRawValue: UInt) {
+    private func friendlyAudioSessionMessage(for error: Error) -> String {
+        let message = error.localizedDescription
+        if message.localizedCaseInsensitiveContains("session activation failed") {
+            return "Connect Bluetooth audio and try again."
+        }
+        return message
+    }
+
+    private func resumePlayback() async {
+        guard await activateAudioSession() else {
+            isPlaying = false
+            isBuffering = false
+            refreshNowPlayingInfo()
+            return
+        }
+
+        shouldResumePlaybackAfterInterruption = false
+        player.play()
+
+        let status = player.timeControlStatus
+        isPlaying = status == .playing
+        isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
+        refreshNowPlayingInfo()
+    }
+
+    private func handleAudioSessionInterruption(typeRawValue: UInt?, optionsRawValue: UInt) async {
         guard let rawType = typeRawValue,
               let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
             return
@@ -546,13 +611,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 return
             }
 
-            activateAudioSession()
-            player.play()
-
-            let status = player.timeControlStatus
-            isPlaying = status == .playing
-            isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
-            refreshNowPlayingInfo()
+            await resumePlayback()
 
         @unknown default:
             shouldResumePlaybackAfterInterruption = false
@@ -660,13 +719,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private func handlePlayCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
         guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
         if !isPlaying && !isBuffering {
-            activateAudioSession()
-            shouldResumePlaybackAfterInterruption = false
-            player.play()
-            let status = player.timeControlStatus
-            isPlaying = status == .playing
-            isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
-            refreshNowPlayingInfo()
+            Task { await resumePlayback() }
         }
         return .success
     }
@@ -703,7 +756,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     @objc
     private func handleTogglePlayPauseCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
         guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
-        togglePlayback()
+        Task { await togglePlayback() }
         return .success
     }
 }

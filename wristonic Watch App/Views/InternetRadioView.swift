@@ -23,8 +23,10 @@ struct InternetRadioView: View {
             } else {
                 ForEach(stations) { station in
                     Button {
-                        environment.playbackCoordinator.play(radioStation: station)
-                        showNowPlaying = true
+                        Task {
+                            await environment.playbackCoordinator.play(radioStation: station)
+                            showNowPlaying = true
+                        }
                     } label: {
                         InternetRadioStationRowView(station: station)
                     }

@@ -117,7 +117,7 @@ struct NowPlayingPlayPauseButton: View {
 
     var body: some View {
         Button {
-            environment.playbackCoordinator.togglePlayback()
+            Task { await environment.playbackCoordinator.togglePlayback() }
         } label: {
             Image(systemName: environment.playbackCoordinator.isPlaying || environment.playbackCoordinator.isBuffering ? "pause.fill" : "play.fill")
                 .font(.title2)
