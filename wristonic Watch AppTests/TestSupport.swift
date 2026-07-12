@@ -39,13 +39,16 @@ final class RecordingTransport: Transporting {
 
 final class ImmediateDownloadService: DownloadServing {
     private(set) var requests: [URLRequest] = []
+    private(set) var allowedInsecureHosts: [String?] = []
     var downloadData = Data(repeating: 0x1, count: 2048)
 
     func download(
         for request: URLRequest,
+        allowedInsecureHost: String?,
         onProgress: (@Sendable (Int64, Int64, Double) -> Void)?
     ) async throws -> URL {
         requests.append(request)
+        allowedInsecureHosts.append(allowedInsecureHost)
         let temporaryURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".download")
         try downloadData.write(to: temporaryURL)
         onProgress?(Int64(downloadData.count), Int64(downloadData.count), Double(downloadData.count))

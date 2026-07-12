@@ -289,7 +289,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             currentSourceCandidates = [localURL]
         } else if let cachedURL = playbackCacheManager.localFileURL(for: track) {
             currentSourceCandidates = [cachedURL]
-            if !settingsStore.settings.offlineOnly {
+            if !settingsStore.settings.offlineOnly && !requiresTransportBackedPlayback {
                 currentSourceCandidates.append(contentsOf: (try? streamCandidateURLs(for: track)) ?? [])
             }
         } else if settingsStore.settings.offlineOnly {
@@ -300,7 +300,11 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
             return
         } else {
             do {
-                currentSourceCandidates = try streamCandidateURLs(for: track)
+                if requiresTransportBackedPlayback {
+                    currentSourceCandidates = [try await playbackCacheManager.cacheTrackForPlayback(track)]
+                } else {
+                    currentSourceCandidates = try streamCandidateURLs(for: track)
+                }
             } catch {
                 lastError = error.localizedDescription
                 isPlaying = false
@@ -320,6 +324,11 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         try clientProvider().streamCandidates(for: track, preferTranscoding: true)
             .compactMap(\.request.url)
             .filter { !$0.absoluteString.isEmpty }
+    }
+
+    private var requiresTransportBackedPlayback: Bool {
+        settingsStore.settings.allowInsecureConnections &&
+        settingsStore.normalizedURL?.scheme?.localizedCaseInsensitiveCompare("https") == .orderedSame
     }
 
     private func startPlaybackCaching() {

@@ -64,6 +64,20 @@ final class PlaybackCacheManager {
         return url
     }
 
+    func cacheTrackForPlayback(_ track: Track) async throws -> URL {
+        if let cachedURL = localFileURL(for: track) {
+            return cachedURL
+        }
+
+        cancelPrefetch()
+        let client = try clientProvider()
+        let cached = try await cacheTrack(track, client: client)
+        records.removeAll { $0.trackID == track.id }
+        records.append(cached)
+        persist()
+        return localFileURL(for: cached)
+    }
+
     func primePlaybackQueue(_ queue: [Track], currentIndex: Int, excludingTrackIDs: Set<String>) {
         guard queue.indices.contains(currentIndex) else {
             cancelPrefetch()
@@ -79,7 +93,11 @@ final class PlaybackCacheManager {
 
         let endIndex = min(startIndex + prefetchTrackCount - 1, queue.count - 1)
         let desiredTracks = Array(queue[startIndex...endIndex]).filter { !excludingTrackIDs.contains($0.id) }
-        let desiredTrackIDs = Set(desiredTracks.map(\.id))
+        var desiredTrackIDs = Set(desiredTracks.map(\.id))
+        let currentTrackID = queue[currentIndex].id
+        if records.contains(where: { $0.trackID == currentTrackID }) {
+            desiredTrackIDs.insert(currentTrackID)
+        }
 
         trimCache(keeping: desiredTrackIDs)
 
@@ -132,6 +150,7 @@ final class PlaybackCacheManager {
 
                 let fileName = "\(track.albumID)-\(track.trackNumber)-\(track.id).\(candidate.fileExtension)"
                 let destinationURL = cacheDirectory.appendingPathComponent(fileName, isDirectory: false)
+                try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
                 if fileManager.fileExists(atPath: destinationURL.path) {
                     try fileManager.removeItem(at: destinationURL)
                 }

@@ -4,13 +4,24 @@ import WatchKit
 protocol DownloadServing {
     func download(
         for request: URLRequest,
+        allowedInsecureHost: String?,
         onProgress: (@Sendable (Int64, Int64, Double) -> Void)?
     ) async throws -> URL
+}
+
+extension DownloadServing {
+    func download(
+        for request: URLRequest,
+        onProgress: (@Sendable (Int64, Int64, Double) -> Void)?
+    ) async throws -> URL {
+        try await download(for: request, allowedInsecureHost: nil, onProgress: onProgress)
+    }
 }
 
 final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, DownloadServing {
     static let shared = BackgroundDownloadService()
     static let sessionIdentifier = "\(Bundle.main.bundleIdentifier ?? "com.andyklimczak.wristonic.watchkitapp").background-downloads"
+    private static let insecureHostTaskDescriptionPrefix = "allow-insecure-host:"
 
     private let sessionIdentifier = BackgroundDownloadService.sessionIdentifier
     private lazy var session: URLSession = {
@@ -30,9 +41,13 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
 
     func download(
         for request: URLRequest,
+        allowedInsecureHost: String? = nil,
         onProgress: (@Sendable (Int64, Int64, Double) -> Void)? = nil
     ) async throws -> URL {
         let task = session.downloadTask(with: request)
+        if let allowedInsecureHost {
+            task.taskDescription = Self.taskDescription(forAllowedInsecureHost: allowedInsecureHost)
+        }
         return try await withCheckedThrowingContinuation { continuation in
             lock.lock()
             continuations[task.taskIdentifier] = continuation
@@ -40,6 +55,22 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
             lock.unlock()
             task.resume()
         }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        guard
+            let trust = challenge.protectionSpace.serverTrust,
+            challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+            let allowedHost = Self.allowedInsecureHost(fromTaskDescription: task.taskDescription),
+            challenge.protectionSpace.host.localizedCaseInsensitiveCompare(allowedHost) == .orderedSame
+        else {
+            return (.performDefaultHandling, nil)
+        }
+        return (.useCredential, URLCredential(trust: trust))
     }
 
     func handle(_ backgroundTasks: Set<WKRefreshBackgroundTask>) {
@@ -152,5 +183,17 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
                 refreshTask.setTaskCompletedWithSnapshot(false)
             }
         }
+    }
+
+    private static func taskDescription(forAllowedInsecureHost host: String) -> String {
+        insecureHostTaskDescriptionPrefix + host
+    }
+
+    private static func allowedInsecureHost(fromTaskDescription taskDescription: String?) -> String? {
+        guard let taskDescription,
+              taskDescription.hasPrefix(insecureHostTaskDescriptionPrefix) else {
+            return nil
+        }
+        return String(taskDescription.dropFirst(insecureHostTaskDescriptionPrefix.count))
     }
 }

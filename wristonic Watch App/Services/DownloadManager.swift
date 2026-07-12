@@ -341,6 +341,13 @@ final class DownloadManager: ObservableObject {
         "playlist:\(playlistID)"
     }
 
+    private var allowedInsecureDownloadHost: String? {
+        guard settingsStore.settings.allowInsecureConnections else {
+            return nil
+        }
+        return settingsStore.normalizedURL?.host
+    }
+
     private func startProcessingQueueIfNeeded() {
         guard processingTask == nil else {
             return
@@ -533,7 +540,10 @@ final class DownloadManager: ObservableObject {
         var lastError: Error?
         for candidate in candidates {
             do {
-                let temporaryURL = try await downloadService.download(for: candidate.request) { totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond in
+                let temporaryURL = try await downloadService.download(
+                    for: candidate.request,
+                    allowedInsecureHost: allowedInsecureDownloadHost
+                ) { totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond in
                     let progress: Double
                     if totalBytesExpectedToWrite > 0 {
                         progress = min(max(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite), 0), 1)
@@ -568,7 +578,11 @@ final class DownloadManager: ObservableObject {
             return nil
         }
 
-        let temporaryURL = try await downloadService.download(for: URLRequest(url: coverArtURL), onProgress: nil)
+        let temporaryURL = try await downloadService.download(
+            for: URLRequest(url: coverArtURL),
+            allowedInsecureHost: allowedInsecureDownloadHost,
+            onProgress: nil
+        )
         let albumDirectory = try self.albumDirectory(albumID: album.id, createIfNeeded: true)
         let destinationURL = albumDirectory.appendingPathComponent("coverart", isDirectory: false)
         if fileManager.fileExists(atPath: destinationURL.path) {
@@ -585,7 +599,11 @@ final class DownloadManager: ObservableObject {
             return nil
         }
 
-        let temporaryURL = try await downloadService.download(for: URLRequest(url: coverArtURL), onProgress: nil)
+        let temporaryURL = try await downloadService.download(
+            for: URLRequest(url: coverArtURL),
+            allowedInsecureHost: allowedInsecureDownloadHost,
+            onProgress: nil
+        )
         let playlistDirectory = try self.playlistDirectory(playlistID: playlist.id, createIfNeeded: true)
         let destinationURL = playlistDirectory.appendingPathComponent("coverart", isDirectory: false)
         if fileManager.fileExists(atPath: destinationURL.path) {

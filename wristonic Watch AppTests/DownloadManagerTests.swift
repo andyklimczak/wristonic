@@ -34,6 +34,32 @@ final class DownloadManagerTests: XCTestCase {
         XCTAssertNotNil(manager.localCoverArtURL(for: "album-1"))
     }
 
+    func testDownloadQueueAllowsInsecureHostWhenConfigured() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsStore = makeSettingsStore(name: UUID().uuidString)
+        settingsStore.settings.allowInsecureConnections = true
+        let downloadService = ImmediateDownloadService()
+        let recordsStore = JSONFileStore<[DownloadRecord]>(url: root.appendingPathComponent("downloads.json"))
+        let historyStore = JSONFileStore<[String: PlaybackHistory]>(url: root.appendingPathComponent("history.json"))
+        let manager = DownloadManager(
+            settingsStore: settingsStore,
+            recordsStore: recordsStore,
+            historyStore: historyStore,
+            downloadsDirectory: root.appendingPathComponent("files", isDirectory: true),
+            downloadService: downloadService,
+            clientProvider: { try makeClient() }
+        )
+        await manager.load()
+
+        let album = try await makeClient().album(id: "album-1")
+        manager.enqueue(albumDetail: album)
+        try await wait(for: { manager.state(for: "album-1").status == .downloaded })
+
+        XCTAssertFalse(downloadService.allowedInsecureHosts.isEmpty)
+        XCTAssertTrue(downloadService.allowedInsecureHosts.allSatisfy { $0 == "demo.navidrome.local" })
+    }
+
     func testDeleteDownloadedAlbumRemovesFilesAndBytes() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

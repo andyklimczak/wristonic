@@ -3,6 +3,28 @@ import XCTest
 
 @MainActor
 final class PlaybackCacheManagerTests: XCTestCase {
+    func testCacheTrackForPlaybackDownloadsCurrentTrackThroughClient() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let recordsStore = JSONFileStore<[PlaybackCacheRecord]>(url: root.appendingPathComponent("playback-cache.json"))
+        let cacheDirectory = root.appendingPathComponent("files", isDirectory: true)
+        let transport = RecordingTransport()
+
+        let manager = PlaybackCacheManager(
+            recordsStore: recordsStore,
+            cacheDirectory: cacheDirectory,
+            clientProvider: { try makeClient(using: transport) }
+        )
+        await manager.load()
+
+        let album = try await makeClient().album(id: "album-1")
+        let cachedURL = try await manager.cacheTrackForPlayback(album.tracks[0])
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cachedURL.path))
+        XCTAssertEqual(manager.localFileURL(for: album.tracks[0]), cachedURL)
+        XCTAssertEqual(transport.requests.first?.url?.lastPathComponent, "stream.view")
+    }
+
     func testPrimePlaybackQueueCachesUpcomingTracksWithoutCachingCurrentTrack() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -56,6 +78,33 @@ final class PlaybackCacheManagerTests: XCTestCase {
 
         XCTAssertNil(manager.localFileURL(for: firstAlbum.tracks[1]))
         XCTAssertNotNil(manager.localFileURL(for: secondAlbum.tracks[1]))
+    }
+
+    func testPrimePlaybackQueueKeepsCurrentTrackWhenItIsAlreadyCached() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let recordsStore = JSONFileStore<[PlaybackCacheRecord]>(url: root.appendingPathComponent("playback-cache.json"))
+        let cacheDirectory = root.appendingPathComponent("files", isDirectory: true)
+        try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+
+        let manager = PlaybackCacheManager(
+            recordsStore: recordsStore,
+            cacheDirectory: cacheDirectory,
+            clientProvider: { try makeClient() }
+        )
+        await manager.load()
+
+        let album = try await makeClient().album(id: "album-1")
+        let currentTrackURL = try await manager.cacheTrackForPlayback(album.tracks[0])
+        manager.primePlaybackQueue(album.tracks, currentIndex: 0, excludingTrackIDs: [])
+
+        try await wait(for: {
+            manager.localFileURL(for: album.tracks[1]) != nil
+        })
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: currentTrackURL.path))
+        XCTAssertEqual(manager.localFileURL(for: album.tracks[0]), currentTrackURL)
+        XCTAssertNotNil(manager.localFileURL(for: album.tracks[1]))
     }
 
     private func wait(for condition: @escaping @MainActor () -> Bool, timeout: TimeInterval = 3) async throws {
