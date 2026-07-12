@@ -53,14 +53,34 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Launch watchOS simulator
-        id: simulator
-        uses: futureware-tech/simulator-action@v5
-        with:
-          os: watchOS
-          model: Apple Watch SE (40mm) (2nd generation)
-          wait_for_boot: true
-          shutdown_after_job: true
+      - name: Select and boot watchOS simulator
+        run: |
+          set -euo pipefail
+
+          simulator_udid="$(
+            xcrun simctl list --json devices available |
+              jq -r '
+                [
+                  .devices[]
+                  | .[]
+                  | select(.isAvailable == true)
+                  | select(.deviceTypeIdentifier | contains("Apple-Watch"))
+                ]
+                | sort_by(.name)
+                | reverse
+                | .[0].udid // empty
+              '
+          )"
+
+          if [ -z "$simulator_udid" ]; then
+            echo "No available Apple Watch simulator found."
+            xcrun simctl list devices available
+            exit 1
+          fi
+
+          echo "WATCH_SIMULATOR_UDID=$simulator_udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator_udid" || true
+          xcrun simctl bootstatus "$simulator_udid" -b
 
       - name: Run unit tests
         run: |
@@ -70,12 +90,19 @@ jobs:
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -configuration Debug \
-            -destination 'id=${{ steps.simulator.outputs.udid }}' \
+            -destination "id=$WATCH_SIMULATOR_UDID" \
             -resultBundlePath "$RESULT_BUNDLE" \
             -only-testing:'wristonic Watch AppTests' \
             -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
             test
+
+      - name: Shutdown watchOS simulator
+        if: always()
+        run: |
+          if [ -n "${WATCH_SIMULATOR_UDID:-}" ]; then
+            xcrun simctl shutdown "$WATCH_SIMULATOR_UDID" || true
+          fi
 
       - name: Upload unit test result bundle
         if: always()
