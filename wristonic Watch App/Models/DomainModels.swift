@@ -1,5 +1,21 @@
 import Foundation
 
+enum TranscodeFormat: String, CaseIterable, Codable, Identifiable {
+    case mp3
+    case aac
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .mp3:
+            return "MP3"
+        case .aac:
+            return "AAC"
+        }
+    }
+}
+
 enum AlbumSortMode: String, CaseIterable, Codable, Identifiable {
     case alphabeticalByName
     case random
@@ -163,6 +179,7 @@ struct AppSettings: Codable, Equatable {
     var serverURLString: String = ""
     var username: String = ""
     var preferredBitrateKbps: Int = 192
+    var transcodeFormat: TranscodeFormat = .mp3
     var allowInsecureConnections: Bool = false
     var storageCapGB: Int = 8
     var offlineOnly: Bool = false
@@ -178,6 +195,7 @@ struct AppSettings: Codable, Equatable {
         case serverURLString
         case username
         case preferredBitrateKbps
+        case transcodeFormat
         case allowInsecureConnections
         case storageCapGB
         case offlineOnly
@@ -192,6 +210,7 @@ struct AppSettings: Codable, Equatable {
         serverURLString = try container.decodeIfPresent(String.self, forKey: .serverURLString) ?? ""
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         preferredBitrateKbps = try container.decodeIfPresent(Int.self, forKey: .preferredBitrateKbps) ?? 192
+        transcodeFormat = try container.decodeIfPresent(TranscodeFormat.self, forKey: .transcodeFormat) ?? .mp3
         allowInsecureConnections = try container.decodeIfPresent(Bool.self, forKey: .allowInsecureConnections) ?? false
         storageCapGB = try container.decodeIfPresent(Int.self, forKey: .storageCapGB) ?? 8
         offlineOnly = try container.decodeIfPresent(Bool.self, forKey: .offlineOnly) ?? false
@@ -399,6 +418,7 @@ struct ServerConfiguration: Equatable {
     var username: String
     var password: String
     var preferredBitrateKbps: Int
+    var transcodeFormat: TranscodeFormat = .mp3
     var allowInsecureConnections: Bool
 }
 

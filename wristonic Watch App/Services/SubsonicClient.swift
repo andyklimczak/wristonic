@@ -154,10 +154,11 @@ final class SubsonicClient {
                 queryItems: [
                     URLQueryItem(name: "id", value: track.id),
                     URLQueryItem(name: "maxBitRate", value: String(configuration.preferredBitrateKbps)),
-                    URLQueryItem(name: "format", value: "mp3")
+                    URLQueryItem(name: "format", value: configuration.transcodeFormat.rawValue)
                 ]
             ))
-            candidates.append(StreamCandidate(request: request, fileExtension: "mp3"))
+            let fileExtension = configuration.transcodeFormat == .aac ? "m4a" : configuration.transcodeFormat.rawValue
+            candidates.append(StreamCandidate(request: request, fileExtension: fileExtension))
         }
 
         if let suffix = track.suffix?.lowercased(), Self.supportedSuffixes.contains(suffix) {

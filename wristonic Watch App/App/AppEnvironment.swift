@@ -302,6 +302,7 @@ final class AppEnvironment: ObservableObject {
             username: username,
             password: password,
             preferredBitrateKbps: settingsStore.settings.preferredBitrateKbps,
+            transcodeFormat: settingsStore.settings.transcodeFormat,
             allowInsecureConnections: allowInsecureConnections
         )
 

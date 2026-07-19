@@ -124,6 +124,16 @@ struct PlaylistDetailView: View {
                 Label("Play Playlist", systemImage: "play.fill")
             }
             .disabled(playlistDetail.tracks.isEmpty)
+
+            Button {
+                Task {
+                    await environment.playbackCoordinator.play(playlistDetail: playlistDetail, startAt: 0, shuffled: true)
+                    showNowPlaying = true
+                }
+            } label: {
+                Label("Shuffle", systemImage: "shuffle")
+            }
+            .disabled(playlistDetail.tracks.isEmpty)
         }
     }
 

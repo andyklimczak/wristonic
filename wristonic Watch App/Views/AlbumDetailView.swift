@@ -54,6 +54,15 @@ struct AlbumDetailView: View {
             } label: {
                 Label("Play Album", systemImage: "play.fill")
             }
+
+            Button {
+                Task {
+                    await environment.playbackCoordinator.play(albumDetail: albumDetail, startAt: 0, shuffled: true)
+                    showNowPlaying = true
+                }
+            } label: {
+                Label("Shuffle", systemImage: "shuffle")
+            }
         }
     }
 
