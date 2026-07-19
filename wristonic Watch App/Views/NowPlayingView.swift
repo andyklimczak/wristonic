@@ -136,6 +136,10 @@ struct NowPlayingView: View {
             }
         }
         .navigationTitle("Now Playing")
+        .overlay(alignment: .topTrailing) {
+            VolumeIndicatorOverlay()
+                .padding(6)
+        }
         .navigationDestination(isPresented: $showAlbumDetail) {
             if let album = currentAlbum {
                 AlbumDetailView(albumID: album.id, initialAlbum: album)
