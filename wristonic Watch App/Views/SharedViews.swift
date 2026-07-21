@@ -127,6 +127,72 @@ struct NowPlayingPlayPauseButton: View {
     }
 }
 
+struct PlayActionControl: View {
+    @EnvironmentObject private var environment: AppEnvironment
+
+    let title: String
+    let isDisabled: Bool
+    let action: () -> Void
+
+    private var isShuffleEnabled: Bool {
+        environment.settingsStore.settings.isShuffleEnabled
+    }
+
+    private var isShuffleControlVisible: Bool {
+        environment.settingsStore.settings.showShuffle
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: action) {
+                HStack(spacing: 5) {
+                    Image(systemName: "play.fill")
+                        .font(.body)
+                    Text(title)
+                        .font(.body)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .layoutPriority(1)
+
+            if isShuffleControlVisible {
+                Rectangle()
+                    .fill(Color.white.opacity(0.45))
+                    .frame(width: 1, height: 24)
+                    .padding(.horizontal, 8)
+
+                Button(action: toggleShuffle) {
+                    Image(systemName: "shuffle")
+                        .foregroundStyle(isShuffleEnabled ? Color.green : Color.white)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Shuffle")
+                .accessibilityValue(isShuffleEnabled ? "On" : "Off")
+            }
+        }
+        .frame(minHeight: 32)
+        .padding(.vertical, 6)
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .background(Color.accentColor, in: Capsule())
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .disabled(isDisabled)
+    }
+
+    private func toggleShuffle() {
+        environment.settingsStore.settings.isShuffleEnabled.toggle()
+        Task { await environment.settingsStore.persist() }
+    }
+}
+
 struct NowPlayingControlsView: View {
     @EnvironmentObject private var environment: AppEnvironment
 

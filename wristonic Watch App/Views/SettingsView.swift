@@ -31,6 +31,7 @@ struct SettingsView: View {
             Section("UI") {
                 Toggle("Show Playlists", isOn: showPlaylistsBinding)
                 Toggle("Show Internet Radio", isOn: showInternetRadioBinding)
+                Toggle("Show Shuffle", isOn: showShuffleBinding)
             }
 
             Section("Storage") {
@@ -96,6 +97,13 @@ struct SettingsView: View {
         Binding(
             get: { environment.settingsStore.settings.showPlaylists },
             set: { environment.settingsStore.settings.showPlaylists = $0 }
+        )
+    }
+
+    private var showShuffleBinding: Binding<Bool> {
+        Binding(
+            get: { environment.settingsStore.settings.showShuffle },
+            set: { environment.settingsStore.settings.showShuffle = $0 }
         )
     }
 }
