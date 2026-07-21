@@ -85,7 +85,6 @@ final class SettingsStore: ObservableObject {
             username: settings.username,
             password: password,
             preferredBitrateKbps: settings.preferredBitrateKbps,
-            transcodeFormat: settings.transcodeFormat,
             allowInsecureConnections: settings.allowInsecureConnections
         )
     }
@@ -95,7 +94,6 @@ final class SettingsStore: ObservableObject {
         username: String,
         password: String,
         preferredBitrateKbps: Int,
-        transcodeFormat: TranscodeFormat = .mp3,
         allowInsecureConnections: Bool
     ) throws -> ServerConfiguration {
         guard let url = validatedServerURL(from: serverAddress, allowInsecureConnections: allowInsecureConnections) else {
@@ -112,7 +110,6 @@ final class SettingsStore: ObservableObject {
             username: trimmedUsername,
             password: password,
             preferredBitrateKbps: preferredBitrateKbps,
-            transcodeFormat: transcodeFormat,
             allowInsecureConnections: allowInsecureConnections
         )
     }

@@ -25,11 +25,6 @@ struct SettingsView: View {
                         Text("\(bitrate) kbps").tag(bitrate)
                     }
                 }
-                Picker("Transcode Format", selection: transcodeFormatBinding) {
-                    ForEach(TranscodeFormat.allCases) { format in
-                        Text(format.displayName).tag(format)
-                    }
-                }
                 Toggle("Offline Only", isOn: offlineOnlyBinding)
             }
 
@@ -80,13 +75,6 @@ struct SettingsView: View {
         Binding(
             get: { environment.settingsStore.settings.preferredBitrateKbps },
             set: { environment.settingsStore.settings.preferredBitrateKbps = $0 }
-        )
-    }
-
-    private var transcodeFormatBinding: Binding<TranscodeFormat> {
-        Binding(
-            get: { environment.settingsStore.settings.transcodeFormat },
-            set: { environment.settingsStore.settings.transcodeFormat = $0 }
         )
     }
 
