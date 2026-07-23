@@ -5,6 +5,7 @@ struct AlbumsView: View {
     @State private var albums: [AlbumSummary] = []
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @State private var hasLoadedInitialAlbums = false
 
     private var sortMode: AlbumSortMode {
         environment.settingsStore.settings.albumSortMode
@@ -53,6 +54,10 @@ struct AlbumsView: View {
         }
         .navigationTitle("Albums")
         .task {
+            guard !hasLoadedInitialAlbums else {
+                return
+            }
+            hasLoadedInitialAlbums = true
             await loadAlbums()
         }
         .refreshable {
