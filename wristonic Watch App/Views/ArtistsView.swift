@@ -252,6 +252,9 @@ struct ArtistDetailView: View {
         .refreshable {
             await loadAlbums(forceRefresh: true)
         }
+        .onChange(of: environment.settingsStore.settings.artistAlbumSortMode) { _, _ in
+            albums = environment.settingsStore.settings.artistAlbumSortMode.sorted(albums)
+        }
     }
 
     private func loadAlbums(forceRefresh: Bool = true) async {
@@ -275,7 +278,9 @@ struct ArtistDetailView: View {
     private func loadAlbumsFromRepository(forceRefresh: Bool) async {
         isLoading = true
         do {
-            albums = try await environment.repository.artistAlbums(artistID: artist.id, forceRefresh: forceRefresh)
+            albums = environment.settingsStore.settings.artistAlbumSortMode.sorted(
+                try await environment.repository.artistAlbums(artistID: artist.id, forceRefresh: forceRefresh)
+            )
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -285,7 +290,7 @@ struct ArtistDetailView: View {
 
     private func syncAlbumsFromCache() {
         if let cached = environment.repository.cachedSnapshot.albumsByArtist[artist.id], !cached.isEmpty {
-            albums = cached
+            albums = environment.settingsStore.settings.artistAlbumSortMode.sorted(cached)
         }
     }
 

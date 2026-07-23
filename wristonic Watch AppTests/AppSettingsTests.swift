@@ -20,6 +20,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.showPlaylists)
         XCTAssertTrue(settings.showShuffle)
         XCTAssertEqual(settings.albumSortMode, .alphabeticalByName)
+        XCTAssertEqual(settings.artistAlbumSortMode, .oldestToNewest)
         XCTAssertFalse(settings.isRepeatingAlbum)
         XCTAssertFalse(settings.isShuffleEnabled)
     }
@@ -34,6 +35,14 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: data)
 
         XCTAssertEqual(settings.albumSortMode, .recentlyPlayed)
+    }
+
+    func testArtistAlbumSortModeDecodesWhenPresent() throws {
+        let data = Data(#"{"artistAlbumSortMode":"newestToOldest"}"#.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(settings.artistAlbumSortMode, .newestToOldest)
     }
 
     func testAlbumRepeatDecodesWhenPresent() throws {

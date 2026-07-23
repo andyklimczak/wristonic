@@ -35,6 +35,62 @@ enum AlbumSortMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum ArtistAlbumSortMode: String, CaseIterable, Codable, Identifiable {
+    case name
+    case oldestToNewest
+    case newestToOldest
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .name:
+            return "Name"
+        case .oldestToNewest:
+            return "Oldest to Newest"
+        case .newestToOldest:
+            return "Newest to Oldest"
+        }
+    }
+
+    func sorted(_ albums: [AlbumSummary]) -> [AlbumSummary] {
+        albums.sorted { lhs, rhs in
+            switch self {
+            case .name:
+                return nameComesFirst(lhs, rhs)
+            case .oldestToNewest:
+                return yearComesFirst(lhs, rhs, ascending: true)
+            case .newestToOldest:
+                return yearComesFirst(lhs, rhs, ascending: false)
+            }
+        }
+    }
+
+    private func nameComesFirst(_ lhs: AlbumSummary, _ rhs: AlbumSummary) -> Bool {
+        let comparison = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+        if comparison == .orderedSame {
+            return lhs.id < rhs.id
+        }
+        return comparison == .orderedAscending
+    }
+
+    private func yearComesFirst(_ lhs: AlbumSummary, _ rhs: AlbumSummary, ascending: Bool) -> Bool {
+        let leftYear = lhs.year.flatMap { $0 > 0 ? $0 : nil }
+        let rightYear = rhs.year.flatMap { $0 > 0 ? $0 : nil }
+
+        switch (leftYear, rightYear) {
+        case let (left?, right?) where left != right:
+            return ascending ? left < right : left > right
+        case (nil, .some):
+            return false
+        case (.some, nil):
+            return true
+        default:
+            return nameComesFirst(lhs, rhs)
+        }
+    }
+}
+
 enum DownloadStatus: String, Codable {
     case notDownloaded
     case queued
@@ -170,6 +226,7 @@ struct AppSettings: Codable, Equatable {
     var showInternetRadio: Bool = true
     var showShuffle: Bool = true
     var albumSortMode: AlbumSortMode = .alphabeticalByName
+    var artistAlbumSortMode: ArtistAlbumSortMode = .oldestToNewest
     var isRepeatingAlbum: Bool = false
     var isShuffleEnabled: Bool = false
 
@@ -187,6 +244,7 @@ struct AppSettings: Codable, Equatable {
         case showInternetRadio
         case showShuffle
         case albumSortMode
+        case artistAlbumSortMode
         case isRepeatingAlbum
         case isShuffleEnabled
     }
@@ -203,6 +261,7 @@ struct AppSettings: Codable, Equatable {
         showInternetRadio = try container.decodeIfPresent(Bool.self, forKey: .showInternetRadio) ?? true
         showShuffle = try container.decodeIfPresent(Bool.self, forKey: .showShuffle) ?? true
         albumSortMode = try container.decodeIfPresent(AlbumSortMode.self, forKey: .albumSortMode) ?? .alphabeticalByName
+        artistAlbumSortMode = try container.decodeIfPresent(ArtistAlbumSortMode.self, forKey: .artistAlbumSortMode) ?? .oldestToNewest
         isRepeatingAlbum = try container.decodeIfPresent(Bool.self, forKey: .isRepeatingAlbum) ?? false
         isShuffleEnabled = try container.decodeIfPresent(Bool.self, forKey: .isShuffleEnabled) ?? false
     }

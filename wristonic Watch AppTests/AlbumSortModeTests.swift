@@ -15,4 +15,31 @@ final class AlbumSortModeTests: XCTestCase {
         XCTAssertEqual(AlbumSortMode.recentlyAdded.subsonicType, "newest")
         XCTAssertEqual(AlbumSortMode.recentlyPlayed.subsonicType, "recent")
     }
+
+    func testArtistAlbumSortOrdersByNameAndYear() {
+        let albums = [
+            album(id: "c", name: "Charlie", year: nil),
+            album(id: "a", name: "Alpha", year: 2024),
+            album(id: "b", name: "Bravo", year: 2020),
+            album(id: "d", name: "Delta", year: 2024)
+        ]
+
+        XCTAssertEqual(ArtistAlbumSortMode.name.sorted(albums).map(\.id), ["a", "b", "c", "d"])
+        XCTAssertEqual(ArtistAlbumSortMode.oldestToNewest.sorted(albums).map(\.id), ["b", "a", "d", "c"])
+        XCTAssertEqual(ArtistAlbumSortMode.newestToOldest.sorted(albums).map(\.id), ["a", "d", "b", "c"])
+    }
+
+    private func album(id: String, name: String, year: Int?) -> AlbumSummary {
+        AlbumSummary(
+            id: id,
+            name: name,
+            artistID: "artist-1",
+            artistName: "Artist",
+            coverArtID: nil,
+            songCount: 1,
+            duration: nil,
+            year: year,
+            createdAt: nil
+        )
+    }
 }

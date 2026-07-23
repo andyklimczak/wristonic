@@ -29,6 +29,11 @@ struct SettingsView: View {
             }
 
             Section("UI") {
+                Picker("Artist Album Sort", selection: artistAlbumSortModeBinding) {
+                    ForEach(ArtistAlbumSortMode.allCases) { sortMode in
+                        Text(sortMode.displayName).tag(sortMode)
+                    }
+                }
                 Toggle("Show Playlists", isOn: showPlaylistsBinding)
                 Toggle("Show Internet Radio", isOn: showInternetRadioBinding)
                 Toggle("Show Shuffle", isOn: showShuffleBinding)
@@ -90,6 +95,13 @@ struct SettingsView: View {
         Binding(
             get: { environment.settingsStore.settings.showInternetRadio },
             set: { environment.settingsStore.settings.showInternetRadio = $0 }
+        )
+    }
+
+    private var artistAlbumSortModeBinding: Binding<ArtistAlbumSortMode> {
+        Binding(
+            get: { environment.settingsStore.settings.artistAlbumSortMode },
+            set: { environment.settingsStore.settings.artistAlbumSortMode = $0 }
         )
     }
 
