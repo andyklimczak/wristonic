@@ -149,15 +149,17 @@ final class SubsonicClient {
     func streamCandidates(for track: Track, preferTranscoding: Bool) -> [StreamCandidate] {
         var candidates: [StreamCandidate] = []
         if preferTranscoding {
-            let request = URLRequest(url: authenticatedURL(
-                path: "stream",
-                queryItems: [
-                    URLQueryItem(name: "id", value: track.id),
-                    URLQueryItem(name: "maxBitRate", value: String(configuration.preferredBitrateKbps)),
-                    URLQueryItem(name: "format", value: "mp3")
-                ]
-            ))
-            candidates.append(StreamCandidate(request: request, fileExtension: "mp3"))
+            for format in ["aac", "mp3"] {
+                let request = URLRequest(url: authenticatedURL(
+                    path: "stream",
+                    queryItems: [
+                        URLQueryItem(name: "id", value: track.id),
+                        URLQueryItem(name: "maxBitRate", value: String(configuration.preferredBitrateKbps)),
+                        URLQueryItem(name: "format", value: format)
+                    ]
+                ))
+                candidates.append(StreamCandidate(request: request, fileExtension: format))
+            }
         }
 
         if let suffix = track.suffix?.lowercased(), Self.supportedSuffixes.contains(suffix) {
@@ -175,7 +177,13 @@ final class SubsonicClient {
     }
 
     func download(for request: URLRequest) async throws -> (URL, URLResponse) {
-        try await transport.download(for: request)
+        let result = try await transport.download(for: request)
+        if let response = result.1 as? HTTPURLResponse,
+           !(200...299).contains(response.statusCode) {
+            try? FileManager.default.removeItem(at: result.0)
+            throw SubsonicClientError.invalidResponse
+        }
+        return result
     }
 
     func reportNowPlaying(trackID: String, listenedAt: Date = Date()) async throws {
@@ -387,4 +395,23 @@ final class SubsonicClient {
     }
 
     static let supportedSuffixes: Set<String> = ["mp3", "m4a", "aac", "wav", "caf", "aif", "aiff"]
+
+    static func fileExtension(for response: URLResponse, fallback: String) -> String {
+        switch response.mimeType?.lowercased() {
+        case "audio/aac", "audio/aacp", "audio/vnd.dlna.adts":
+            return "aac"
+        case "audio/mp4", "audio/m4a", "audio/x-m4a":
+            return "m4a"
+        case "audio/mpeg", "audio/mp3", "audio/x-mp3":
+            return "mp3"
+        case "audio/wav", "audio/x-wav":
+            return "wav"
+        case "audio/x-caf":
+            return "caf"
+        case "audio/aiff", "audio/x-aiff":
+            return "aiff"
+        default:
+            return fallback
+        }
+    }
 }

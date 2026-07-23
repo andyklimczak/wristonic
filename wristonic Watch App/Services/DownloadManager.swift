@@ -540,7 +540,7 @@ final class DownloadManager: ObservableObject {
         var lastError: Error?
         for candidate in candidates {
             do {
-                let temporaryURL = try await downloadService.download(
+                let downloadedFile = try await downloadService.download(
                     for: candidate.request,
                     allowedInsecureHost: allowedInsecureDownloadHost
                 ) { totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond in
@@ -552,8 +552,10 @@ final class DownloadManager: ObservableObject {
                     }
                     onProgress(progress, totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil, bytesPerSecond)
                 }
+                let temporaryURL = downloadedFile.url
                 let albumDirectory = try self.albumDirectory(albumID: track.albumID, createIfNeeded: true)
-                let fileName = "\(track.trackNumber)-\(track.id).\(candidate.fileExtension)"
+                let fileExtension = SubsonicClient.fileExtension(for: downloadedFile.response, fallback: candidate.fileExtension)
+                let fileName = "\(track.trackNumber)-\(track.id).\(fileExtension)"
                 let destinationURL = albumDirectory.appendingPathComponent(fileName, isDirectory: false)
                 if fileManager.fileExists(atPath: destinationURL.path) {
                     try fileManager.removeItem(at: destinationURL)
@@ -582,7 +584,7 @@ final class DownloadManager: ObservableObject {
             for: URLRequest(url: coverArtURL),
             allowedInsecureHost: allowedInsecureDownloadHost,
             onProgress: nil
-        )
+        ).url
         let albumDirectory = try self.albumDirectory(albumID: album.id, createIfNeeded: true)
         let destinationURL = albumDirectory.appendingPathComponent("coverart", isDirectory: false)
         if fileManager.fileExists(atPath: destinationURL.path) {
@@ -603,7 +605,7 @@ final class DownloadManager: ObservableObject {
             for: URLRequest(url: coverArtURL),
             allowedInsecureHost: allowedInsecureDownloadHost,
             onProgress: nil
-        )
+        ).url
         let playlistDirectory = try self.playlistDirectory(playlistID: playlist.id, createIfNeeded: true)
         let destinationURL = playlistDirectory.appendingPathComponent("coverart", isDirectory: false)
         if fileManager.fileExists(atPath: destinationURL.path) {

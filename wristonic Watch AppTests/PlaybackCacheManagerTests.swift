@@ -191,6 +191,24 @@ final class PlaybackCoordinatorTests: XCTestCase {
         XCTAssertNil(harness.coordinator.lastError)
         XCTAssertEqual(harness.coordinator.currentTrack?.id, harness.albumDetail.tracks[0].id)
     }
+
+    func testPausingDuringAudioSessionActivationPreventsLatePlaybackStart() async throws {
+        let sessionManager = DelayedAudioSessionManager()
+        let harness = try await makePlaybackCoordinatorHarness(audioSessionManager: sessionManager)
+
+        let playTask = Task {
+            await harness.coordinator.play(albumDetail: harness.albumDetail, startAt: 0)
+        }
+        await Task.yield()
+        XCTAssertEqual(sessionManager.activationCount, 1)
+
+        await harness.coordinator.togglePlayback()
+        sessionManager.finishActivation()
+        await playTask.value
+
+        XCTAssertFalse(harness.coordinator.isPlaying)
+        XCTAssertFalse(harness.coordinator.isBuffering)
+    }
 }
 
 private struct PlaybackCoordinatorHarness {
@@ -207,6 +225,24 @@ private final class FakeAudioSessionManager: AudioSessionManaging {
         if let activationError {
             throw activationError
         }
+    }
+}
+
+@MainActor
+private final class DelayedAudioSessionManager: AudioSessionManaging {
+    private(set) var activationCount = 0
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func activatePlaybackSession() async throws {
+        activationCount += 1
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func finishActivation() {
+        continuation?.resume()
+        continuation = nil
     }
 }
 

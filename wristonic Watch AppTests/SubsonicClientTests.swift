@@ -56,7 +56,7 @@ final class SubsonicClientTests: XCTestCase {
         XCTAssertEqual(firstURL, secondURL)
     }
 
-    func testStreamCandidatesPreferTranscodedThenOriginal() throws {
+    func testStreamCandidatesPreferAACThenMP3ThenOriginal() throws {
         let client = try makeClient()
         let track = Track(
             id: "track-1",
@@ -75,9 +75,29 @@ final class SubsonicClientTests: XCTestCase {
 
         let candidates = client.streamCandidates(for: track, preferTranscoding: true)
 
-        XCTAssertEqual(candidates.count, 2)
-        XCTAssertTrue(candidates[0].request.url?.absoluteString.contains("format=mp3") == true)
-        XCTAssertFalse(candidates[1].request.url?.absoluteString.contains("format=mp3") == true)
+        XCTAssertEqual(candidates.count, 3)
+        XCTAssertTrue(candidates[0].request.url?.absoluteString.contains("format=aac") == true)
+        XCTAssertTrue(candidates[1].request.url?.absoluteString.contains("format=mp3") == true)
+        XCTAssertFalse(candidates[2].request.url?.absoluteString.contains("format=") == true)
+    }
+
+    func testStreamResponseUsesActualContainerExtension() {
+        let url = URL(string: "https://demo.navidrome.local/rest/stream.view")!
+
+        XCTAssertEqual(
+            SubsonicClient.fileExtension(
+                for: URLResponse(url: url, mimeType: "audio/aac", expectedContentLength: 0, textEncodingName: nil),
+                fallback: "aac"
+            ),
+            "aac"
+        )
+        XCTAssertEqual(
+            SubsonicClient.fileExtension(
+                for: URLResponse(url: url, mimeType: "audio/mp4", expectedContentLength: 0, textEncodingName: nil),
+                fallback: "aac"
+            ),
+            "m4a"
+        )
     }
 
     func testServerErrorsBubbleMessage() async {

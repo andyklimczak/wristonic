@@ -6,6 +6,7 @@ struct InternetRadioView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var showNowPlaying = false
+    @State private var nowPlayingLaunchContext: NowPlayingLaunchContext?
 
     var body: some View {
         List {
@@ -23,9 +24,10 @@ struct InternetRadioView: View {
             } else {
                 ForEach(stations) { station in
                     Button {
+                        nowPlayingLaunchContext = .radio(station)
+                        showNowPlaying = true
                         Task {
                             await environment.playbackCoordinator.play(radioStation: station)
-                            showNowPlaying = true
                         }
                     } label: {
                         InternetRadioStationRowView(station: station)
@@ -44,7 +46,7 @@ struct InternetRadioView: View {
             Task { await loadStations() }
         }
         .navigationDestination(isPresented: $showNowPlaying) {
-            NowPlayingView()
+            NowPlayingView(launchContext: nowPlayingLaunchContext)
         }
     }
 

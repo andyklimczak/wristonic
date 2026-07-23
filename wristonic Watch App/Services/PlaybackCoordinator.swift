@@ -97,6 +97,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var shouldPlayAlbumStartHaptic = false
     private var shouldResumePlaybackAfterInterruption = false
+    private var playbackRequested = false
+    private var playbackRequestGeneration = 0
 
     init(
         downloadManager: DownloadManager,
@@ -136,6 +138,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     func play(albumDetail: AlbumDetail, startAt index: Int, shuffled: Bool = false) async {
+        playbackRequested = true
         currentRadioStation = nil
         currentPlaylist = nil
         currentAlbum = albumDetail.album
@@ -146,6 +149,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     func play(playlistDetail: PlaylistDetail, startAt index: Int, shuffled: Bool = false) async {
+        playbackRequested = true
         currentRadioStation = nil
         currentAlbum = nil
         currentPlaylist = playlistDetail.playlist
@@ -156,6 +160,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     func play(radioStation: InternetRadioStation) async {
+        playbackRequested = true
         finalizePlaybackRecord()
         playbackCacheManager.cancelPrefetch()
         currentTrack = nil
@@ -178,12 +183,17 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.automaticallyWaitsToMinimizeStalling = false
         observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
+        let requestGeneration = beginPlaybackRequest()
         guard await activateAudioSession() else {
-            isPlaying = false
-            isBuffering = false
-            refreshNowPlayingInfo()
+            if playbackRequestGeneration == requestGeneration {
+                playbackRequested = false
+                isPlaying = false
+                isBuffering = false
+                refreshNowPlayingInfo()
+            }
             return
         }
+        guard isCurrentPlaybackRequest(requestGeneration) else { return }
         shouldResumePlaybackAfterInterruption = false
         player.play()
         isPlaying = player.timeControlStatus == .playing
@@ -193,17 +203,16 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     func togglePlayback() async {
         if isPlaying || isBuffering {
-            player.pause()
-            isPlaying = false
-            isBuffering = false
-            shouldResumePlaybackAfterInterruption = false
+            pausePlayback()
         } else if currentTrack != nil || currentRadioStation != nil {
+            playbackRequested = true
             await resumePlayback()
         }
         refreshNowPlayingInfo()
     }
 
     func stop() {
+        cancelPlaybackRequest()
         finalizePlaybackRecord()
         playbackCacheManager.cancelPrefetch()
         player.pause()
@@ -293,6 +302,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 currentSourceCandidates.append(contentsOf: (try? streamCandidateURLs(for: track)) ?? [])
             }
         } else if settingsStore.settings.offlineOnly {
+            playbackRequested = false
             lastError = "This track is not downloaded."
             isPlaying = false
             isBuffering = false
@@ -306,6 +316,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                     currentSourceCandidates = try streamCandidateURLs(for: track)
                 }
             } catch {
+                playbackRequested = false
                 lastError = error.localizedDescription
                 isPlaying = false
                 isBuffering = false
@@ -353,8 +364,10 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private func startCurrentCandidate(resumeAt: TimeInterval = 0, reportsNowPlaying: Bool = true) async {
         guard let track = currentTrack else { return }
         guard let url = currentSourceCandidates[safe: candidateIndex] else {
+            playbackRequested = false
             lastError = "Unable to play \(track.title)."
             isPlaying = false
+            isBuffering = false
             shouldPlayAlbumStartHaptic = false
             return
         }
@@ -363,13 +376,18 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         player.automaticallyWaitsToMinimizeStalling = true
         observeCurrentItem(item)
         player.replaceCurrentItem(with: item)
+        let requestGeneration = beginPlaybackRequest()
         guard await activateAudioSession() else {
-            isPlaying = false
-            isBuffering = false
-            shouldPlayAlbumStartHaptic = false
-            refreshNowPlayingInfo()
+            if playbackRequestGeneration == requestGeneration {
+                playbackRequested = false
+                isPlaying = false
+                isBuffering = false
+                shouldPlayAlbumStartHaptic = false
+                refreshNowPlayingInfo()
+            }
             return
         }
+        guard isCurrentPlaybackRequest(requestGeneration) else { return }
         shouldResumePlaybackAfterInterruption = false
         if resumeAt > 0 {
             let boundedResumeAt = boundedResumePosition(resumeAt)
@@ -518,6 +536,12 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
 
     private func handleCurrentItemFailure(_ error: Error?) async {
         guard let track = currentTrack else { return }
+        guard playbackRequested else {
+            isPlaying = false
+            isBuffering = false
+            refreshNowPlayingInfo()
+            return
+        }
 
         let currentPlayerTime = player.currentTime().seconds
         let recovery = PlaybackFailureRecovery.plan(
@@ -534,6 +558,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         }
 
         lastError = error?.localizedDescription ?? "Unable to play \(track.title)."
+        playbackRequested = false
         isPlaying = false
         isBuffering = false
         shouldPlayAlbumStartHaptic = false
@@ -581,12 +606,17 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     }
 
     private func resumePlayback() async {
+        let requestGeneration = beginPlaybackRequest()
         guard await activateAudioSession() else {
-            isPlaying = false
-            isBuffering = false
-            refreshNowPlayingInfo()
+            if playbackRequestGeneration == requestGeneration {
+                playbackRequested = false
+                isPlaying = false
+                isBuffering = false
+                refreshNowPlayingInfo()
+            }
             return
         }
+        guard isCurrentPlaybackRequest(requestGeneration) else { return }
 
         shouldResumePlaybackAfterInterruption = false
         player.play()
@@ -595,6 +625,31 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         isPlaying = status == .playing
         isBuffering = status == .waitingToPlayAtSpecifiedRate || (currentRadioStation != nil && status != .playing)
         refreshNowPlayingInfo()
+    }
+
+    private func beginPlaybackRequest() -> Int {
+        playbackRequested = true
+        playbackRequestGeneration += 1
+        isPlaying = false
+        isBuffering = true
+        return playbackRequestGeneration
+    }
+
+    private func cancelPlaybackRequest() {
+        playbackRequested = false
+        playbackRequestGeneration += 1
+        player.pause()
+        isPlaying = false
+        isBuffering = false
+        shouldResumePlaybackAfterInterruption = false
+    }
+
+    private func pausePlayback() {
+        cancelPlaybackRequest()
+    }
+
+    private func isCurrentPlaybackRequest(_ generation: Int) -> Bool {
+        playbackRequested && playbackRequestGeneration == generation
     }
 
     private func handleAudioSessionInterruption(typeRawValue: UInt?, optionsRawValue: UInt) async {
@@ -620,7 +675,9 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
                 return
             }
 
-            await resumePlayback()
+            if playbackRequested {
+                await resumePlayback()
+            }
 
         @unknown default:
             shouldResumePlaybackAfterInterruption = false
@@ -728,6 +785,7 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     private func handlePlayCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
         guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
         if !isPlaying && !isBuffering {
+            playbackRequested = true
             Task { await resumePlayback() }
         }
         return .success
@@ -736,13 +794,8 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
     @objc
     private func handlePauseCommand(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
         guard currentTrack != nil || currentRadioStation != nil else { return .commandFailed }
-        if isPlaying || isBuffering {
-            player.pause()
-            isPlaying = false
-            isBuffering = false
-            shouldResumePlaybackAfterInterruption = false
-            refreshNowPlayingInfo()
-        }
+        pausePlayback()
+        refreshNowPlayingInfo()
         return .success
     }
 

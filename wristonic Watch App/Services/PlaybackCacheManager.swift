@@ -142,13 +142,14 @@ final class PlaybackCacheManager {
         var lastError: Error?
         for candidate in candidates {
             do {
-                let (temporaryURL, _) = try await client.download(for: candidate.request)
+                let (temporaryURL, response) = try await client.download(for: candidate.request)
                 if Task.isCancelled {
                     try? fileManager.removeItem(at: temporaryURL)
                     throw CancellationError()
                 }
 
-                let fileName = "\(track.albumID)-\(track.trackNumber)-\(track.id).\(candidate.fileExtension)"
+                let fileExtension = SubsonicClient.fileExtension(for: response, fallback: candidate.fileExtension)
+                let fileName = "\(track.albumID)-\(track.trackNumber)-\(track.id).\(fileExtension)"
                 let destinationURL = cacheDirectory.appendingPathComponent(fileName, isDirectory: false)
                 try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
                 if fileManager.fileExists(atPath: destinationURL.path) {

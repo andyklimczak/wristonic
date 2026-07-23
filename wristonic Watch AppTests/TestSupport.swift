@@ -41,18 +41,25 @@ final class ImmediateDownloadService: DownloadServing {
     private(set) var requests: [URLRequest] = []
     private(set) var allowedInsecureHosts: [String?] = []
     var downloadData = Data(repeating: 0x1, count: 2048)
+    var mimeType = "audio/aac"
 
     func download(
         for request: URLRequest,
         allowedInsecureHost: String?,
         onProgress: (@Sendable (Int64, Int64, Double) -> Void)?
-    ) async throws -> URL {
+    ) async throws -> DownloadedFile {
         requests.append(request)
         allowedInsecureHosts.append(allowedInsecureHost)
         let temporaryURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".download")
         try downloadData.write(to: temporaryURL)
         onProgress?(Int64(downloadData.count), Int64(downloadData.count), Double(downloadData.count))
-        return temporaryURL
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": mimeType]
+        )!
+        return DownloadedFile(url: temporaryURL, response: response)
     }
 }
 

@@ -5,11 +5,16 @@ import ImageIO
 
 @MainActor
 final class CoverArtStore {
+    private struct ProcessedCoverArt {
+        let image: UIImage
+        let diskData: Data
+    }
+
     static let shared = CoverArtStore()
 
     private let cache = NSCache<NSURL, UIImage>()
     private let maximumPixelSize: CGFloat = 128
-    private var inFlightTasks: [NSURL: Task<UIImage?, Never>] = [:]
+    private var inFlightTasks: [NSURL: Task<ProcessedCoverArt?, Never>] = [:]
     private let maxConcurrentLoads = 2
     private var activeLoads = 0
     private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
@@ -67,15 +72,13 @@ final class CoverArtStore {
             return cached
         }
         if let task = inFlightTasks[key] {
-            return await task.value
+            return await task.value?.image
         }
 
-        let task = Task<UIImage?, Never> {
+        let task = Task<ProcessedCoverArt?, Never> {
             await self.acquirePermit()
             defer {
-                Task { @MainActor in
-                    self.releasePermit()
-                }
+                self.releasePermit()
             }
             if Task.isCancelled {
                 return nil
@@ -85,23 +88,24 @@ final class CoverArtStore {
                 if Task.isCancelled {
                     return nil
                 }
-                guard let image = self.processedImage(from: data) else { return nil }
-                return image
+                return await self.processedCoverArt(from: data)
             } catch {
                 return nil
             }
         }
         inFlightTasks[key] = task
-        let image = await task.value
+        let artwork = await task.value
         inFlightTasks[key] = nil
 
-        if let image {
+        if let artwork {
+            let image = artwork.image
             cache.setObject(image, forKey: key, cost: imageCost(image))
             if !url.isFileURL {
-                persistDiskCachedImage(image, for: url)
+                await persistDiskCachedImageData(artwork.diskData, for: url)
             }
+            return image
         }
-        return image
+        return nil
     }
 
     func cachedUIImage(for url: URL) -> UIImage? {
@@ -121,21 +125,28 @@ final class CoverArtStore {
             return nil
         }
         guard let data = try? Data(contentsOf: cachedFileURL),
-              let image = processedImage(from: data) else {
+              let image = UIImage(data: data) else {
             return nil
         }
         try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: cachedFileURL.path)
         return image
     }
 
-    private func persistDiskCachedImage(_ image: UIImage, for url: URL) {
-        guard let cachedFileURL = cachedFileURL(for: url),
-              let data = image.jpegData(compressionQuality: 0.82) else {
+    private func persistDiskCachedImageData(_ data: Data, for url: URL) async {
+        guard let cachedFileURL = cachedFileURL(for: url) else {
             return
         }
-        try? fileManager.createDirectory(at: cachedFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: cachedFileURL, options: .atomic)
-        enforceDiskCacheLimit()
+        let cacheDirectory = cachedFileURL.deletingLastPathComponent()
+        let diskCacheLimitBytes = self.diskCacheLimitBytes
+
+        await Task.detached(priority: .utility) {
+            Self.writeDiskCachedImage(
+                data,
+                to: cachedFileURL,
+                cacheDirectory: cacheDirectory,
+                diskCacheLimitBytes: diskCacheLimitBytes
+            )
+        }.value
     }
 
     private func cachedFileURL(for url: URL) -> URL? {
@@ -147,21 +158,37 @@ final class CoverArtStore {
         return cacheDirectory.appendingPathComponent(fileName, isDirectory: false)
     }
 
-    private func processedImage(from data: Data) -> UIImage? {
-        let options = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithData(data as CFData, options) else {
-            return UIImage(data: data)
+    private func processedCoverArt(from data: Data) async -> ProcessedCoverArt? {
+        let maximumPixelSize = Int(maximumPixelSize)
+        guard let thumbnailData = await Task.detached(priority: .userInitiated, operation: {
+            Self.downsampledJPEG(from: data, maximumPixelSize: maximumPixelSize)
+        }).value,
+            let image = UIImage(data: thumbnailData) else {
+            return nil
         }
+
+        return ProcessedCoverArt(image: image, diskData: thumbnailData)
+    }
+
+    private nonisolated static func downsampledJPEG(from data: Data, maximumPixelSize: Int) -> Data? {
+        let options = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, options) else { return nil }
         let downsampleOptions = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize
         ] as CFDictionary
-        if let imageRef = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) {
-            return UIImage(cgImage: imageRef)
+        guard let imageRef = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) else { return nil }
+
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
+            return nil
         }
-        return UIImage(data: data)
+        let properties = [kCGImageDestinationLossyCompressionQuality: 0.82] as CFDictionary
+        CGImageDestinationAddImage(destination, imageRef, properties)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
     }
 
     private func imageCost(_ image: UIImage) -> Int {
@@ -171,11 +198,27 @@ final class CoverArtStore {
         return cgImage.bytesPerRow * cgImage.height
     }
 
-    private func enforceDiskCacheLimit() {
-        guard let cacheDirectory else {
-            return
-        }
+    private nonisolated static func writeDiskCachedImage(
+        _ data: Data,
+        to cachedFileURL: URL,
+        cacheDirectory: URL,
+        diskCacheLimitBytes: Int64
+    ) {
+        let fileManager = FileManager.default
+        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        try? data.write(to: cachedFileURL, options: .atomic)
+        enforceDiskCacheLimit(
+            in: cacheDirectory,
+            diskCacheLimitBytes: diskCacheLimitBytes,
+            fileManager: fileManager
+        )
+    }
 
+    private nonisolated static func enforceDiskCacheLimit(
+        in cacheDirectory: URL,
+        diskCacheLimitBytes: Int64,
+        fileManager: FileManager
+    ) {
         let resourceKeys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
         guard let enumerator = fileManager.enumerator(at: cacheDirectory, includingPropertiesForKeys: Array(resourceKeys)) else {
             return

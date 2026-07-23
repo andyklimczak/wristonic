@@ -1,19 +1,24 @@
 import Foundation
 import WatchKit
 
+struct DownloadedFile {
+    var url: URL
+    var response: URLResponse
+}
+
 protocol DownloadServing {
     func download(
         for request: URLRequest,
         allowedInsecureHost: String?,
         onProgress: (@Sendable (Int64, Int64, Double) -> Void)?
-    ) async throws -> URL
+    ) async throws -> DownloadedFile
 }
 
 extension DownloadServing {
     func download(
         for request: URLRequest,
         onProgress: (@Sendable (Int64, Int64, Double) -> Void)?
-    ) async throws -> URL {
+    ) async throws -> DownloadedFile {
         try await download(for: request, allowedInsecureHost: nil, onProgress: onProgress)
     }
 }
@@ -33,8 +38,8 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
     }()
 
     private let lock = NSLock()
-    private var continuations: [Int: CheckedContinuation<URL, Error>] = [:]
-    private var stagedFiles: [Int: URL] = [:]
+    private var continuations: [Int: CheckedContinuation<DownloadedFile, Error>] = [:]
+    private var stagedFiles: [Int: DownloadedFile] = [:]
     private var progressHandlers: [Int: @Sendable (Int64, Int64, Double) -> Void] = [:]
     private var progressSamples: [Int: (bytes: Int64, date: Date)] = [:]
     private var refreshTasks: [WKURLSessionRefreshBackgroundTask] = []
@@ -43,7 +48,7 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
         for request: URLRequest,
         allowedInsecureHost: String? = nil,
         onProgress: (@Sendable (Int64, Int64, Double) -> Void)? = nil
-    ) async throws -> URL {
+    ) async throws -> DownloadedFile {
         let task = session.downloadTask(with: request)
         if let allowedInsecureHost {
             task.taskDescription = Self.taskDescription(forAllowedInsecureHost: allowedInsecureHost)
@@ -92,6 +97,16 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let response = downloadTask.response else {
+            complete(taskIdentifier: downloadTask.taskIdentifier, result: .failure(URLError(.badServerResponse)))
+            return
+        }
+        if let response = response as? HTTPURLResponse,
+           !(200...299).contains(response.statusCode) {
+            complete(taskIdentifier: downloadTask.taskIdentifier, result: .failure(URLError(.badServerResponse)))
+            return
+        }
+
         let temporaryURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".download")
         do {
             if FileManager.default.fileExists(atPath: temporaryURL.path) {
@@ -99,7 +114,7 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
             }
             try FileManager.default.moveItem(at: location, to: temporaryURL)
             lock.lock()
-            stagedFiles[downloadTask.taskIdentifier] = temporaryURL
+            stagedFiles[downloadTask.taskIdentifier] = DownloadedFile(url: temporaryURL, response: response)
             lock.unlock()
         } catch {
             complete(taskIdentifier: downloadTask.taskIdentifier, result: .failure(error))
@@ -151,13 +166,13 @@ final class BackgroundDownloadService: NSObject, URLSessionDownloadDelegate, Dow
         handler(totalBytesWritten, totalBytesExpectedToWrite, bytesPerSecond)
     }
 
-    private func complete(taskIdentifier: Int, result: Result<URL, Error>) {
+    private func complete(taskIdentifier: Int, result: Result<DownloadedFile, Error>) {
         lock.lock()
         let continuation = continuations.removeValue(forKey: taskIdentifier)
         progressHandlers.removeValue(forKey: taskIdentifier)
         progressSamples.removeValue(forKey: taskIdentifier)
         if case .failure = result, let stagedFile = stagedFiles.removeValue(forKey: taskIdentifier) {
-            try? FileManager.default.removeItem(at: stagedFile)
+            try? FileManager.default.removeItem(at: stagedFile.url)
         }
         lock.unlock()
 

@@ -119,11 +119,19 @@ struct NowPlayingPlayPauseButton: View {
         Button {
             Task { await environment.playbackCoordinator.togglePlayback() }
         } label: {
-            Image(systemName: environment.playbackCoordinator.isPlaying || environment.playbackCoordinator.isBuffering ? "pause.fill" : "play.fill")
-                .font(.title2)
-                .frame(width: 44, height: 44)
+            Group {
+                if environment.playbackCoordinator.isBuffering {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: environment.playbackCoordinator.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.title2)
+                }
+            }
+            .frame(width: 44, height: 44)
         }
         .buttonStyle(.borderedProminent)
+        .accessibilityLabel(environment.playbackCoordinator.isBuffering ? "Pause loading" : environment.playbackCoordinator.isPlaying ? "Pause" : "Play")
     }
 }
 

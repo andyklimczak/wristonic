@@ -9,6 +9,7 @@ struct AlbumDetailView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var showNowPlaying = false
+    @State private var nowPlayingLaunchContext: NowPlayingLaunchContext?
     @State private var showDeleteDownloadConfirmation = false
 
     var body: some View {
@@ -33,7 +34,7 @@ struct AlbumDetailView: View {
             await loadAlbum()
         }
         .navigationDestination(isPresented: $showNowPlaying) {
-            NowPlayingView()
+            NowPlayingView(launchContext: nowPlayingLaunchContext)
         }
         .confirmationDialog("Delete downloaded album from this watch?", isPresented: $showDeleteDownloadConfirmation) {
             Button("Delete Album Download", role: .destructive) {
@@ -47,13 +48,14 @@ struct AlbumDetailView: View {
     private func primaryPlayAction(albumDetail: AlbumDetail) -> some View {
         Section {
             PlayActionControl(title: "Play Album", isDisabled: false) {
+                nowPlayingLaunchContext = .album(albumDetail.album)
+                showNowPlaying = true
                 Task {
                     await environment.playbackCoordinator.play(
                         albumDetail: albumDetail,
                         startAt: 0,
                         shuffled: environment.settingsStore.settings.isShuffleEnabled
                     )
-                    showNowPlaying = true
                 }
             }
         }
@@ -108,6 +110,7 @@ struct AlbumDetailView: View {
         Section("Actions") {
             if isCurrentAlbumPlaying(albumDetail) {
                 Button("Open Player") {
+                    nowPlayingLaunchContext = nil
                     showNowPlaying = true
                 }
             }
@@ -152,9 +155,10 @@ struct AlbumDetailView: View {
         Section("Tracks") {
             ForEach(Array(albumDetail.tracks.enumerated()), id: \.element.id) { index, track in
                 Button {
+                    nowPlayingLaunchContext = .album(albumDetail.album)
+                    showNowPlaying = true
                     Task {
                         await environment.playbackCoordinator.play(albumDetail: albumDetail, startAt: index)
-                        showNowPlaying = true
                     }
                 } label: {
                     HStack {

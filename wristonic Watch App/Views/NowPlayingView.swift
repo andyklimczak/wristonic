@@ -1,10 +1,21 @@
 import SwiftUI
 
+enum NowPlayingLaunchContext {
+    case album(AlbumSummary)
+    case playlist(PlaylistSummary)
+    case radio(InternetRadioStation)
+}
+
 struct NowPlayingView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var showAlbumDetail = false
     @State private var showArtistDetail = false
     @State private var showPlaylistDetail = false
+    let launchContext: NowPlayingLaunchContext?
+
+    init(launchContext: NowPlayingLaunchContext? = nil) {
+        self.launchContext = launchContext
+    }
 
     var body: some View {
         List {
@@ -125,6 +136,8 @@ struct NowPlayingView: View {
                         }
                     }
                 }
+            } else if let launchContext {
+                launchPlaceholder(for: launchContext)
             } else {
                 Text("Nothing is playing.")
                     .foregroundStyle(.secondary)
@@ -158,6 +171,63 @@ struct NowPlayingView: View {
             return nil
         }
         return ArtistSummary(id: track.artistID, name: track.artistName, albumCount: 0)
+    }
+
+    @ViewBuilder
+    private func launchPlaceholder(for context: NowPlayingLaunchContext) -> some View {
+        switch context {
+        case .album(let album):
+            startingPlaceholder(
+                title: album.name,
+                subtitle: album.artistName,
+                artworkURL: preferredCoverArtURL(environment: environment, albumID: album.id, coverArtID: album.coverArtID)
+            )
+        case .playlist(let playlist):
+            startingPlaceholder(
+                title: playlist.name,
+                subtitle: playlist.owner ?? "Playlist",
+                artworkURL: playlistArtworkURL(for: playlist)
+            )
+        case .radio(let station):
+            startingPlaceholder(
+                title: station.name,
+                subtitle: "Internet Radio",
+                artworkURL: radioCoverArtURL(for: station.coverArtID)
+            )
+        }
+    }
+
+    private func startingPlaceholder(title: String, subtitle: String, artworkURL: URL?) -> some View {
+        Section {
+            VStack(alignment: .center, spacing: 10) {
+                Button {} label: {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(true)
+                .accessibilityLabel("Starting playback")
+
+                ArtworkView(url: artworkURL, dimension: 96)
+
+                Text(title)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label("Starting...", systemImage: "play.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
     }
 
     private var currentAlbum: AlbumSummary? {
@@ -196,6 +266,13 @@ struct NowPlayingView: View {
             return radioCoverArtURL(for: playlist.coverArtID)
         }
         return nil
+    }
+
+    private func playlistArtworkURL(for playlist: PlaylistSummary) -> URL? {
+        if let localURL = environment.downloadManager.localPlaylistCoverArtURL(for: playlist.id) {
+            return localURL
+        }
+        return radioCoverArtURL(for: playlist.coverArtID)
     }
 
     private func radioCoverArtURL(for coverArtID: String?) -> URL? {

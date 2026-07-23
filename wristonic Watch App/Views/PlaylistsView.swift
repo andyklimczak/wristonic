@@ -78,6 +78,7 @@ struct PlaylistDetailView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var showNowPlaying = false
+    @State private var nowPlayingLaunchContext: NowPlayingLaunchContext?
     @State private var showDeleteDownloadConfirmation = false
 
     var body: some View {
@@ -102,7 +103,7 @@ struct PlaylistDetailView: View {
             await loadPlaylist()
         }
         .navigationDestination(isPresented: $showNowPlaying) {
-            NowPlayingView()
+            NowPlayingView(launchContext: nowPlayingLaunchContext)
         }
         .confirmationDialog("Delete downloaded playlist from this watch?", isPresented: $showDeleteDownloadConfirmation) {
             Button("Delete Playlist Download", role: .destructive) {
@@ -116,13 +117,14 @@ struct PlaylistDetailView: View {
     private func primaryPlayAction(playlistDetail: PlaylistDetail) -> some View {
         Section {
             PlayActionControl(title: "Play Playlist", isDisabled: playlistDetail.tracks.isEmpty) {
+                nowPlayingLaunchContext = .playlist(playlistDetail.playlist)
+                showNowPlaying = true
                 Task {
                     await environment.playbackCoordinator.play(
                         playlistDetail: playlistDetail,
                         startAt: 0,
                         shuffled: environment.settingsStore.settings.isShuffleEnabled
                     )
-                    showNowPlaying = true
                 }
             }
         }
@@ -179,6 +181,7 @@ struct PlaylistDetailView: View {
         Section("Actions") {
             if environment.playbackCoordinator.currentPlaylist?.id == playlistDetail.playlist.id {
                 Button("Open Player") {
+                    nowPlayingLaunchContext = nil
                     showNowPlaying = true
                 }
             }
@@ -219,9 +222,10 @@ struct PlaylistDetailView: View {
         Section("Tracks") {
             ForEach(Array(playlistDetail.tracks.enumerated()), id: \.element.id) { index, track in
                 Button {
+                    nowPlayingLaunchContext = .playlist(playlistDetail.playlist)
+                    showNowPlaying = true
                     Task {
                         await environment.playbackCoordinator.play(playlistDetail: playlistDetail, startAt: index)
-                        showNowPlaying = true
                     }
                 } label: {
                     HStack {
