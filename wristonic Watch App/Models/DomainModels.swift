@@ -5,6 +5,7 @@ enum AlbumSortMode: String, CaseIterable, Codable, Identifiable {
     case random
     case recentlyAdded
     case recentlyPlayed
+    case mostPlayed
 
     var id: String { rawValue }
 
@@ -18,6 +19,8 @@ enum AlbumSortMode: String, CaseIterable, Codable, Identifiable {
             return "Recently Added"
         case .recentlyPlayed:
             return "Recently Played"
+        case .mostPlayed:
+            return "Most Played"
         }
     }
 
@@ -31,6 +34,8 @@ enum AlbumSortMode: String, CaseIterable, Codable, Identifiable {
             return "newest"
         case .recentlyPlayed:
             return "recent"
+        case .mostPlayed:
+            return "frequent"
         }
     }
 }

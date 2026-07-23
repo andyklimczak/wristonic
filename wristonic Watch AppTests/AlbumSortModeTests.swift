@@ -7,6 +7,7 @@ final class AlbumSortModeTests: XCTestCase {
         XCTAssertEqual(AlbumSortMode.random.displayName, "Random")
         XCTAssertEqual(AlbumSortMode.recentlyAdded.displayName, "Recently Added")
         XCTAssertEqual(AlbumSortMode.recentlyPlayed.displayName, "Recently Played")
+        XCTAssertEqual(AlbumSortMode.mostPlayed.displayName, "Most Played")
     }
 
     func testSubsonicTypeMappingMatchesServerExpectations() {
@@ -14,6 +15,7 @@ final class AlbumSortModeTests: XCTestCase {
         XCTAssertEqual(AlbumSortMode.random.subsonicType, "random")
         XCTAssertEqual(AlbumSortMode.recentlyAdded.subsonicType, "newest")
         XCTAssertEqual(AlbumSortMode.recentlyPlayed.subsonicType, "recent")
+        XCTAssertEqual(AlbumSortMode.mostPlayed.subsonicType, "frequent")
     }
 
     func testArtistAlbumSortOrdersByNameAndYear() {

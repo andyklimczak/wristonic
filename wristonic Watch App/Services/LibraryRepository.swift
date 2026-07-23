@@ -282,6 +282,14 @@ final class LibraryRepository: ObservableObject {
             return records.sorted {
                 ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast)
             }.map(\.album)
+        case .mostPlayed:
+            let records = downloadRecordsProvider().filter(\.hasDownloadedContent)
+            return records.sorted {
+                if $0.playCount != $1.playCount {
+                    return $0.playCount > $1.playCount
+                }
+                return $0.album.name.localizedCaseInsensitiveCompare($1.album.name) == .orderedAscending
+            }.map(\.album)
         }
     }
 

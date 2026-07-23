@@ -127,6 +127,7 @@ struct AlbumSortSelectionView: View {
             sortRow(for: .random)
             sortRow(for: .recentlyAdded)
             sortRow(for: .recentlyPlayed)
+            sortRow(for: .mostPlayed)
         }
         .navigationTitle("Sort")
         .navigationBarTitleDisplayMode(.inline)

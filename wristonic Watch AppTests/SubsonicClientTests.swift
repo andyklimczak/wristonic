@@ -47,6 +47,17 @@ final class SubsonicClientTests: XCTestCase {
         XCTAssertEqual(queryItems["type"], "recent")
     }
 
+    func testAlbumListRequestSupportsMostPlayedSortMode() async throws {
+        let transport = RecordingTransport()
+        transport.dataResponses["getAlbumList2"] = Data(DemoMode.albumListPayload.utf8)
+
+        _ = try await makeClient(using: transport).albums(sortMode: .mostPlayed)
+
+        let components = URLComponents(url: try XCTUnwrap(transport.requests.last?.url), resolvingAgainstBaseURL: false)
+        let queryItems = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(queryItems["type"], "frequent")
+    }
+
     func testCoverArtURLIsStableForSameClient() throws {
         let client = try makeClient()
 
