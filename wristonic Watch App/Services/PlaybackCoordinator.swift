@@ -135,22 +135,22 @@ final class PlaybackCoordinator: NSObject, ObservableObject {
         itemStatusObserver?.invalidate()
     }
 
-    func play(albumDetail: AlbumDetail, startAt index: Int) async {
+    func play(albumDetail: AlbumDetail, startAt index: Int, shuffled: Bool = false) async {
         currentRadioStation = nil
         currentPlaylist = nil
         currentAlbum = albumDetail.album
-        queue = albumDetail.tracks
-        currentIndex = min(max(index, 0), max(albumDetail.tracks.count - 1, 0))
+        queue = shuffled ? albumDetail.tracks.shuffled() : albumDetail.tracks
+        currentIndex = shuffled ? 0 : min(max(index, 0), max(albumDetail.tracks.count - 1, 0))
         shouldPlayAlbumStartHaptic = true
         await playCurrentTrack()
     }
 
-    func play(playlistDetail: PlaylistDetail, startAt index: Int) async {
+    func play(playlistDetail: PlaylistDetail, startAt index: Int, shuffled: Bool = false) async {
         currentRadioStation = nil
         currentAlbum = nil
         currentPlaylist = playlistDetail.playlist
-        queue = playlistDetail.tracks
-        currentIndex = min(max(index, 0), max(playlistDetail.tracks.count - 1, 0))
+        queue = shuffled ? playlistDetail.tracks.shuffled() : playlistDetail.tracks
+        currentIndex = shuffled ? 0 : min(max(index, 0), max(playlistDetail.tracks.count - 1, 0))
         shouldPlayAlbumStartHaptic = true
         await playCurrentTrack()
     }

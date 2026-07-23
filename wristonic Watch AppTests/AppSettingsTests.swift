@@ -18,8 +18,10 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertTrue(settings.showInternetRadio)
         XCTAssertTrue(settings.showPlaylists)
+        XCTAssertTrue(settings.showShuffle)
         XCTAssertEqual(settings.albumSortMode, .alphabeticalByName)
         XCTAssertFalse(settings.isRepeatingAlbum)
+        XCTAssertFalse(settings.isShuffleEnabled)
     }
 
     func testAlbumSortModeDecodesWhenPresent() throws {
@@ -44,6 +46,14 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: data)
 
         XCTAssertTrue(settings.isRepeatingAlbum)
+    }
+
+    func testShuffleSettingDecodesWhenPresent() throws {
+        let data = Data(#"{"isShuffleEnabled":true}"#.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertTrue(settings.isShuffleEnabled)
     }
 
     func testCachedLibrarySnapshotDefaultsMissingInternetRadioStationsToEmpty() throws {

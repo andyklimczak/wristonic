@@ -168,8 +168,10 @@ struct AppSettings: Codable, Equatable {
     var offlineOnly: Bool = false
     var showPlaylists: Bool = true
     var showInternetRadio: Bool = true
+    var showShuffle: Bool = true
     var albumSortMode: AlbumSortMode = .alphabeticalByName
     var isRepeatingAlbum: Bool = false
+    var isShuffleEnabled: Bool = false
 
     init() {
     }
@@ -183,8 +185,10 @@ struct AppSettings: Codable, Equatable {
         case offlineOnly
         case showPlaylists
         case showInternetRadio
+        case showShuffle
         case albumSortMode
         case isRepeatingAlbum
+        case isShuffleEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -197,8 +201,10 @@ struct AppSettings: Codable, Equatable {
         offlineOnly = try container.decodeIfPresent(Bool.self, forKey: .offlineOnly) ?? false
         showPlaylists = try container.decodeIfPresent(Bool.self, forKey: .showPlaylists) ?? true
         showInternetRadio = try container.decodeIfPresent(Bool.self, forKey: .showInternetRadio) ?? true
+        showShuffle = try container.decodeIfPresent(Bool.self, forKey: .showShuffle) ?? true
         albumSortMode = try container.decodeIfPresent(AlbumSortMode.self, forKey: .albumSortMode) ?? .alphabeticalByName
         isRepeatingAlbum = try container.decodeIfPresent(Bool.self, forKey: .isRepeatingAlbum) ?? false
+        isShuffleEnabled = try container.decodeIfPresent(Bool.self, forKey: .isShuffleEnabled) ?? false
     }
 }
 

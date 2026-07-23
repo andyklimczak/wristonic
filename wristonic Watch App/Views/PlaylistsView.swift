@@ -115,15 +115,16 @@ struct PlaylistDetailView: View {
     @ViewBuilder
     private func primaryPlayAction(playlistDetail: PlaylistDetail) -> some View {
         Section {
-            Button {
+            PlayActionControl(title: "Play Playlist", isDisabled: playlistDetail.tracks.isEmpty) {
                 Task {
-                    await environment.playbackCoordinator.play(playlistDetail: playlistDetail, startAt: 0)
+                    await environment.playbackCoordinator.play(
+                        playlistDetail: playlistDetail,
+                        startAt: 0,
+                        shuffled: environment.settingsStore.settings.isShuffleEnabled
+                    )
                     showNowPlaying = true
                 }
-            } label: {
-                Label("Play Playlist", systemImage: "play.fill")
             }
-            .disabled(playlistDetail.tracks.isEmpty)
         }
     }
 

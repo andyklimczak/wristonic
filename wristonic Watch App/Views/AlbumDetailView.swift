@@ -46,13 +46,15 @@ struct AlbumDetailView: View {
     @ViewBuilder
     private func primaryPlayAction(albumDetail: AlbumDetail) -> some View {
         Section {
-            Button {
+            PlayActionControl(title: "Play Album", isDisabled: false) {
                 Task {
-                    await environment.playbackCoordinator.play(albumDetail: albumDetail, startAt: 0)
+                    await environment.playbackCoordinator.play(
+                        albumDetail: albumDetail,
+                        startAt: 0,
+                        shuffled: environment.settingsStore.settings.isShuffleEnabled
+                    )
                     showNowPlaying = true
                 }
-            } label: {
-                Label("Play Album", systemImage: "play.fill")
             }
         }
     }
