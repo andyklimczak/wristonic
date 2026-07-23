@@ -85,6 +85,13 @@ struct AlbumDetailView: View {
                     }
                     .frame(maxWidth: .infinity)
 
+                    if let year = album.year, year > 0 {
+                        Text(String(year))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
                     Text(album.artistName)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
