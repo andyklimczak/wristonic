@@ -61,6 +61,34 @@ final class CoverArtStoreTests: XCTestCase {
         XCTAssertNotNil(secondStore.cachedUIImage(for: url))
     }
 
+    func testDiskCacheIgnoresEphemeralSubsonicAuthParameters() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let firstStore = CoverArtStore()
+        firstStore.configure(cacheDirectory: root, diskCacheLimitBytes: 1_000_000)
+        let firstURL = URL(string: "https://example.com/rest/getCoverArt.view?u=andy&t=first-token&s=first-salt&v=1.16.1&id=cover-1")!
+        let secondURL = URL(string: "https://example.com/rest/getCoverArt.view?u=andy&t=second-token&s=second-salt&v=1.16.1&id=cover-1")!
+        let pngData = makePNGData()
+        var fetchCount = 0
+
+        let firstImage = await firstStore.uiImage(for: firstURL) { _ in
+            fetchCount += 1
+            return pngData
+        }
+        XCTAssertNotNil(firstImage)
+
+        let secondStore = CoverArtStore()
+        secondStore.configure(cacheDirectory: root, diskCacheLimitBytes: 1_000_000)
+
+        let secondImage = await secondStore.uiImage(for: secondURL) { _ in
+            fetchCount += 1
+            return pngData
+        }
+        XCTAssertNotNil(secondImage)
+        XCTAssertEqual(fetchCount, 1)
+    }
+
     private func makePNGData() -> Data {
         Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==")!
     }

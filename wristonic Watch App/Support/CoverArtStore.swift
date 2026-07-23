@@ -153,9 +153,27 @@ final class CoverArtStore {
         guard let cacheDirectory else {
             return nil
         }
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        let digest = SHA256.hash(data: Data(cacheKey(for: url).utf8))
         let fileName = digest.map { String(format: "%02x", $0) }.joined() + ".jpg"
         return cacheDirectory.appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    private func cacheKey(for url: URL) -> String {
+        guard !url.isFileURL,
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        else {
+            return url.absoluteString
+        }
+
+        components.queryItems = components.queryItems?
+            .filter { $0.name != "t" && $0.name != "s" }
+            .sorted { lhs, rhs in
+                if lhs.name == rhs.name {
+                    return (lhs.value ?? "") < (rhs.value ?? "")
+                }
+                return lhs.name < rhs.name
+            }
+        return components.url?.absoluteString ?? url.absoluteString
     }
 
     private func processedCoverArt(from data: Data) async -> ProcessedCoverArt? {
