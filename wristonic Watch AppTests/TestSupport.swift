@@ -13,10 +13,42 @@ func skipOnGitHubActions(_ reason: String) throws {
     }
 }
 
+@MainActor
+func waitForTestCondition(_ condition: () -> Bool) async throws {
+    let deadline = Date().addingTimeInterval(10)
+    while !condition() && Date() < deadline {
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    _ = try XCTUnwrap(condition() ? true : nil, "Timed out waiting for condition")
+}
+
+@MainActor
+final class TestGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isOpen = false
+    private(set) var isWaiting = false
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            isWaiting = true
+        }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+        isWaiting = false
+    }
+}
+
 final class RecordingTransport: Transporting {
     private(set) var requests: [URLRequest] = []
     var dataResponses: [String: Data] = [:]
-    var downloadData = Data(repeating: 0x1, count: 2048)
+    var downloadData = testAudioData()
+    var downloadMIMEType = "audio/wav"
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         requests.append(request)
@@ -26,7 +58,7 @@ final class RecordingTransport: Transporting {
 
     func download(for request: URLRequest) async throws -> (URL, URLResponse) {
         requests.append(request)
-        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: [:])!
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": downloadMIMEType])!
         let temporaryURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp3")
         try downloadData.write(to: temporaryURL)
         return (temporaryURL, response)
@@ -40,8 +72,10 @@ final class RecordingTransport: Transporting {
 final class ImmediateDownloadService: DownloadServing {
     private(set) var requests: [URLRequest] = []
     private(set) var allowedInsecureHosts: [String?] = []
-    var downloadData = Data(repeating: 0x1, count: 2048)
-    var mimeType = "audio/aac"
+    var downloadData = testAudioData()
+    var mimeType = "audio/wav"
+    var responsesByFormat: [String: (data: Data, mimeType: String)] = [:]
+    private(set) var temporaryURLs: [URL] = []
 
     func download(
         for request: URLRequest,
@@ -50,14 +84,17 @@ final class ImmediateDownloadService: DownloadServing {
     ) async throws -> DownloadedFile {
         requests.append(request)
         allowedInsecureHosts.append(allowedInsecureHost)
+        let format = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "format" }?.value ?? "original"
+        let payload = responsesByFormat[format] ?? (data: downloadData, mimeType: mimeType)
         let temporaryURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".download")
-        try downloadData.write(to: temporaryURL)
-        onProgress?(Int64(downloadData.count), Int64(downloadData.count), Double(downloadData.count))
+        temporaryURLs.append(temporaryURL)
+        try payload.data.write(to: temporaryURL)
+        onProgress?(Int64(payload.data.count), Int64(payload.data.count), Double(payload.data.count))
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
             httpVersion: nil,
-            headerFields: ["Content-Type": mimeType]
+            headerFields: ["Content-Type": payload.mimeType]
         )!
         return DownloadedFile(url: temporaryURL, response: response)
     }

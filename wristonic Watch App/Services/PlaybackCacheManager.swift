@@ -7,6 +7,8 @@ final class PlaybackCacheManager {
     private let fileManager: FileManager
     private let clientProvider: () throws -> SubsonicClient
     private let prefetchTrackCount: Int
+    private let validateAudio: LocalAudioFile.Validator
+    private var cacheGeneration = 0
     private(set) var records: [PlaybackCacheRecord] = []
     private var warmCacheTask: Task<Void, Never>?
 
@@ -15,12 +17,14 @@ final class PlaybackCacheManager {
         cacheDirectory: URL,
         fileManager: FileManager = .default,
         prefetchTrackCount: Int = 3,
+        validateAudio: LocalAudioFile.Validator? = nil,
         clientProvider: @escaping () throws -> SubsonicClient
     ) {
         self.recordsStore = recordsStore
         self.cacheDirectory = cacheDirectory
         self.fileManager = fileManager
         self.prefetchTrackCount = prefetchTrackCount
+        self.validateAudio = validateAudio ?? LocalAudioFile.validate
         self.clientProvider = clientProvider
     }
 
@@ -38,6 +42,7 @@ final class PlaybackCacheManager {
     }
 
     func clear() async {
+        cacheGeneration += 1
         cancelPrefetch()
         if fileManager.fileExists(atPath: cacheDirectory.path) {
             try? fileManager.removeItem(at: cacheDirectory)
@@ -109,7 +114,9 @@ final class PlaybackCacheManager {
         warmCacheTask?.cancel()
         warmCacheTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { warmCacheTask = nil }
+            defer {
+                if !Task.isCancelled { warmCacheTask = nil }
+            }
 
             guard let client = try? clientProvider() else {
                 return
@@ -134,6 +141,7 @@ final class PlaybackCacheManager {
     }
 
     private func cacheTrack(_ track: Track, client: SubsonicClient) async throws -> PlaybackCacheRecord {
+        let generation = cacheGeneration
         let candidates = client.streamCandidates(for: track, preferTranscoding: true)
         guard !candidates.isEmpty else {
             throw SubsonicClientError.unsupportedMediaType
@@ -141,23 +149,32 @@ final class PlaybackCacheManager {
 
         var lastError: Error?
         for candidate in candidates {
+            try Task.checkCancellation()
+            guard generation == cacheGeneration else { throw CancellationError() }
             do {
                 let (temporaryURL, response) = try await client.download(for: candidate.request)
-                if Task.isCancelled {
-                    try? fileManager.removeItem(at: temporaryURL)
-                    throw CancellationError()
-                }
+                defer { try? fileManager.removeItem(at: temporaryURL) }
+                try Task.checkCancellation()
+                guard generation == cacheGeneration else { throw CancellationError() }
 
                 let fileExtension = SubsonicClient.fileExtension(for: response, fallback: candidate.fileExtension)
                 let fileName = "\(track.albumID)-\(track.trackNumber)-\(track.id).\(fileExtension)"
                 let destinationURL = cacheDirectory.appendingPathComponent(fileName, isDirectory: false)
                 try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-                if fileManager.fileExists(atPath: destinationURL.path) {
-                    try fileManager.removeItem(at: destinationURL)
+                let stagedURL = try LocalAudioFile.stageDownload(from: temporaryURL, for: destinationURL, fileManager: fileManager)
+                defer { try? fileManager.removeItem(at: stagedURL) }
+                try await validateAudio(stagedURL)
+                try Task.checkCancellation()
+                guard generation == cacheGeneration else { throw CancellationError() }
+
+                // A foreground fill may have completed while prefetch was validating.
+                if let existing = records.first(where: { $0.trackID == track.id }),
+                   fileManager.fileExists(atPath: localFileURL(for: existing).path) {
+                    return existing
                 }
-                try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-                let attributes = try fileManager.attributesOfItem(atPath: destinationURL.path)
+                let attributes = try fileManager.attributesOfItem(atPath: stagedURL.path)
                 let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                try LocalAudioFile.publish(stagedURL, at: destinationURL, fileManager: fileManager)
                 let now = Date()
                 return PlaybackCacheRecord(
                     trackID: track.id,

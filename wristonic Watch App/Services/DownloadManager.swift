@@ -359,12 +359,15 @@ final class DownloadManager: ObservableObject {
     }
 
     private func processQueue() async {
-        defer { processingTask = nil }
-        while true {
+        defer {
+            if !Task.isCancelled { processingTask = nil }
+        }
+        while !Task.isCancelled {
             if let index = records.firstIndex(where: { $0.state.status == .queued }) {
                 do {
                     try await download(recordAt: index)
                 } catch {
+                    guard !Task.isCancelled else { return }
                     if records.indices.contains(index) {
                         records[index].state = DownloadState(status: .failed, progress: 0, errorMessage: error.localizedDescription)
                         persist()
@@ -377,6 +380,7 @@ final class DownloadManager: ObservableObject {
                 do {
                     try await download(playlistRecordAt: index)
                 } catch {
+                    guard !Task.isCancelled else { return }
                     if playlistRecords.indices.contains(index) {
                         playlistRecords[index].state = DownloadState(status: .failed, progress: 0, errorMessage: error.localizedDescription)
                         persist()
@@ -404,7 +408,7 @@ final class DownloadManager: ObservableObject {
         let totalTrackCount = max(record.tracks.count, 1)
 
         for (offset, track) in record.tracks.enumerated() {
-            if let existing = downloadedTrack(for: track.id) {
+            if let existing = try await validatedDownloadedTrack(for: track.id) {
                 upsertDownloadedTrack(existing, for: track, ownerKey: ownerKey)
                 records[index].state = DownloadState(
                     status: .downloading,
@@ -472,7 +476,7 @@ final class DownloadManager: ObservableObject {
 
         for (offset, track) in tracks.enumerated() {
             let downloaded: DownloadedTrackRecord
-            if let existing = downloadedTrack(for: track.id) {
+            if let existing = try await validatedDownloadedTrack(for: track.id) {
                 downloaded = existing
             } else {
                 let completedTracks = playlistRecords[index].downloadedTrackIDs.count
@@ -517,9 +521,9 @@ final class DownloadManager: ObservableObject {
             playlistRecords[index].coverArtBytes = downloadedCoverArt.bytes
         }
 
+        refreshPlaylistDownloadedTrackIDs()
         if playlistRecords.indices.contains(index) {
             playlistRecords[index].downloadedAt = Date()
-            playlistRecords[index].totalBytes = savedBytes(for: playlistRecords[index])
             playlistRecords[index].state = DownloadState(status: .downloaded, progress: 1, errorMessage: nil, transferRateBytesPerSecond: nil)
         }
         refreshStoragePolicy()
@@ -539,6 +543,7 @@ final class DownloadManager: ObservableObject {
 
         var lastError: Error?
         for candidate in candidates {
+            try Task.checkCancellation()
             do {
                 let downloadedFile = try await downloadService.download(
                     for: candidate.request,
@@ -553,21 +558,26 @@ final class DownloadManager: ObservableObject {
                     onProgress(progress, totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil, bytesPerSecond)
                 }
                 let temporaryURL = downloadedFile.url
+                defer { try? fileManager.removeItem(at: temporaryURL) }
+                try Task.checkCancellation()
                 let albumDirectory = try self.albumDirectory(albumID: track.albumID, createIfNeeded: true)
                 let fileExtension = SubsonicClient.fileExtension(for: downloadedFile.response, fallback: candidate.fileExtension)
                 let fileName = "\(track.trackNumber)-\(track.id).\(fileExtension)"
                 let destinationURL = albumDirectory.appendingPathComponent(fileName, isDirectory: false)
-                if fileManager.fileExists(atPath: destinationURL.path) {
-                    try fileManager.removeItem(at: destinationURL)
-                }
-                try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-                let attributes = try fileManager.attributesOfItem(atPath: destinationURL.path)
+                let stagedURL = try LocalAudioFile.stageDownload(from: temporaryURL, for: destinationURL, fileManager: fileManager)
+                defer { try? fileManager.removeItem(at: stagedURL) }
+                try await LocalAudioFile.validate(stagedURL)
+                try Task.checkCancellation()
+                let attributes = try fileManager.attributesOfItem(atPath: stagedURL.path)
                 let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                try LocalAudioFile.publish(stagedURL, at: destinationURL, fileManager: fileManager)
                 return DownloadedTrackRecord(
                     trackID: track.id,
                     relativePath: "\(track.albumID)/\(fileName)",
                     bytes: fileSize
                 )
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 lastError = error
             }
@@ -699,19 +709,30 @@ final class DownloadManager: ObservableObject {
 
     private func upsertDownloadedTrack(_ downloadedTrack: DownloadedTrackRecord, for track: Track, ownerKey: String) {
         let index = ensureAlbumRecord(for: track)
+        let previous = records.flatMap(\.downloadedTracks).filter { $0.trackID == track.id }
         var updatedTrack = downloadedTrack
         updatedTrack.ownerKeys.insert(ownerKey)
-
-        if let downloadedIndex = records[index].downloadedTracks.firstIndex(where: { $0.trackID == track.id }) {
-            records[index].downloadedTracks[downloadedIndex].ownerKeys.insert(ownerKey)
-        } else {
-            records[index].downloadedTracks.append(updatedTrack)
+        for record in previous {
+            updatedTrack.ownerKeys.formUnion(record.ownerKeys)
         }
 
         for recordIndex in records.indices {
-            for trackIndex in records[recordIndex].downloadedTracks.indices where records[recordIndex].downloadedTracks[trackIndex].trackID == track.id {
-                records[recordIndex].downloadedTracks[trackIndex].ownerKeys.insert(ownerKey)
+            let matches = records[recordIndex].downloadedTracks.indices.filter {
+                records[recordIndex].downloadedTracks[$0].trackID == track.id
             }
+            if matches.isEmpty {
+                guard recordIndex == index else { continue }
+                records[recordIndex].downloadedTracks.append(updatedTrack)
+            } else {
+                for trackIndex in matches {
+                    records[recordIndex].downloadedTracks[trackIndex] = updatedTrack
+                }
+            }
+            records[recordIndex].totalBytes = records[recordIndex].downloadedTracks.reduce(into: Int64(0)) { $0 += $1.bytes }
+        }
+
+        for record in previous where record.relativePath != updatedTrack.relativePath {
+            try? fileManager.removeItem(at: localFileURL(for: record))
         }
     }
 
@@ -768,6 +789,22 @@ final class DownloadManager: ObservableObject {
         records
             .flatMap(\.downloadedTracks)
             .first { $0.trackID == trackID && fileManager.fileExists(atPath: localFileURL(for: $0).path) }
+    }
+
+    private func validatedDownloadedTrack(for trackID: String) async throws -> DownloadedTrackRecord? {
+        try Task.checkCancellation()
+        guard let existing = downloadedTrack(for: trackID) else { return nil }
+        do {
+            try await LocalAudioFile.validate(localFileURL(for: existing))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
+        try Task.checkCancellation()
+        // Ownership can change while AVFoundation is reading the file.
+        guard let current = downloadedTrack(for: trackID), current.relativePath == existing.relativePath else { return nil }
+        return current
     }
 
     private func uniqueDownloadedTracks() -> [DownloadedTrackRecord] {
