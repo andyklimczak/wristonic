@@ -1,7 +1,9 @@
 import Foundation
+import OSLog
 
 @MainActor
 final class PlaybackCacheManager {
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "wristonic", category: "Playback")
     private let recordsStore: JSONFileStore<[PlaybackCacheRecord]>
     private let cacheDirectory: URL
     private let fileManager: FileManager
@@ -67,6 +69,13 @@ final class PlaybackCacheManager {
         records[index].lastAccessedAt = Date()
         persist()
         return url
+    }
+
+    func discardCachedFile(for track: Track, matching url: URL) {
+        guard let index = records.firstIndex(where: { $0.trackID == track.id && localFileURL(for: $0) == url }) else { return }
+        records.remove(at: index)
+        try? fileManager.removeItem(at: url)
+        persist()
     }
 
     func cacheTrackForPlayback(_ track: Track) async throws -> URL {
@@ -175,6 +184,7 @@ final class PlaybackCacheManager {
                 let attributes = try fileManager.attributesOfItem(atPath: stagedURL.path)
                 let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
                 try LocalAudioFile.publish(stagedURL, at: destinationURL, fileManager: fileManager)
+                logger.debug("Playback cache file completed (\(fileSize, privacy: .public) bytes)")
                 let now = Date()
                 return PlaybackCacheRecord(
                     trackID: track.id,

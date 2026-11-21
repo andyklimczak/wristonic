@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import wristonic_Watch_App
 
@@ -176,43 +177,123 @@ final class PlaybackCacheManagerTests: XCTestCase {
     }
 }
 
-final class PlaybackFailureRecoveryTests: XCTestCase {
-    func testFallbackAfterPlaybackStartedResumesAtCurrentPosition() {
-        let recovery = PlaybackFailureRecovery.plan(
-            currentCandidateIndex: 0,
-            candidateCount: 2,
-            elapsed: 95,
-            playerTime: 100
-        )
-
-        XCTAssertEqual(recovery, PlaybackFailureRecovery(candidateIndex: 1, resumeAt: 100))
+final class PlaybackTimelineTests: XCTestCase {
+    func testCheckpointUsesCurrentPositionAndFallsBackToLastObservation() {
+        XCTAssertEqual(PlaybackTimeline.checkpoint(elapsed: 95, playerTime: 100), 100)
+        XCTAssertEqual(PlaybackTimeline.checkpoint(elapsed: 95, playerTime: 0), 95)
+        XCTAssertEqual(PlaybackTimeline.checkpoint(elapsed: 0.5, playerTime: .nan), 0.5)
     }
 
-    func testFallbackBeforePlaybackStartsUsesBeginning() {
-        let recovery = PlaybackFailureRecovery.plan(
-            currentCandidateIndex: 0,
-            candidateCount: 2,
-            elapsed: 0.5,
-            playerTime: 0.5
-        )
-
-        XCTAssertEqual(recovery, PlaybackFailureRecovery(candidateIndex: 1, resumeAt: 0))
+    func testPrematureEndUsesMetadataWithRoundingAllowance() {
+        XCTAssertTrue(PlaybackTimeline.endedEarly(at: 100, expectedDuration: 210))
+        XCTAssertFalse(PlaybackTimeline.endedEarly(at: 209, expectedDuration: 210))
+        XCTAssertFalse(PlaybackTimeline.endedEarly(at: 100, expectedDuration: nil))
     }
 
-    func testFailureWithoutRemainingCandidatesDoesNotRecover() {
-        let recovery = PlaybackFailureRecovery.plan(
-            currentCandidateIndex: 1,
-            candidateCount: 2,
-            elapsed: 100,
-            playerTime: 100
-        )
-
-        XCTAssertNil(recovery)
+    func testFailedSeekOrWrongPositionIsNotARecovery() {
+        XCTAssertTrue(PlaybackTimeline.reachedCheckpoint(100, actual: 100, seekFinished: true))
+        XCTAssertFalse(PlaybackTimeline.reachedCheckpoint(100, actual: 100, seekFinished: false))
+        XCTAssertFalse(PlaybackTimeline.reachedCheckpoint(100, actual: 0, seekFinished: true))
     }
 }
 
 @MainActor
 final class PlaybackCoordinatorTests: XCTestCase {
+    func testColdStreamStartsImmediatelyAndFailureResumesFromCachedAudio() async throws {
+        try await assertStreamRecovers(after: .AVPlayerItemFailedToPlayToEndTime)
+    }
+
+    func testEarlyStreamEndRecoversInsteadOfRepeatingFromZero() async throws {
+        try await assertStreamRecovers(after: .AVPlayerItemDidPlayToEndTime)
+    }
+
+    private func assertStreamRecovers(after notification: Notification.Name) async throws {
+        let transport = RecordingTransport()
+        transport.downloadData = testAudioData(seconds: 24)
+        let player = RecordingPlayer()
+        let harness = try await makePlaybackCoordinatorHarness(
+            audioSessionManager: FakeAudioSessionManager(),
+            offlineOnly: false,
+            fileData: nil,
+            trackDuration: 24,
+            playbackTransport: transport,
+            player: player
+        )
+        defer { harness.coordinator.stop() }
+        harness.coordinator.toggleRepeatAlbum()
+        await harness.coordinator.play(albumDetail: harness.albumDetail, startAt: 0)
+        let firstItem = try XCTUnwrap(player.currentItem)
+        XCTAssertEqual(player.plays.count, 1)
+        XCTAssertEqual(player.plays.first?.url.isFileURL, false)
+        XCTAssertTrue(transport.requests.isEmpty, "A cold track must start without a complete HTTP download")
+
+        player.streamPosition = 12
+        NotificationCenter.default.post(name: notification, object: firstItem)
+        try await waitForTestCondition { player.plays.count == 2 || harness.coordinator.lastError != nil }
+
+        XCTAssertEqual(player.plays.count, 2)
+        XCTAssertEqual(player.plays.last?.url.isFileURL, true)
+        XCTAssertEqual(try XCTUnwrap(player.plays.last?.time), 12, accuracy: 0.25)
+        XCTAssertEqual(transport.requests.count, 1)
+        XCTAssertEqual(harness.coordinator.currentIndex, 0)
+        XCTAssertNil(harness.coordinator.lastError)
+    }
+
+    func testPauseDuringRecoveryKeepsTheCheckpointForResume() async throws {
+        let transport = RecordingTransport()
+        transport.downloadData = testAudioData(seconds: 24)
+        let player = RecordingPlayer()
+        let gate = TestGate()
+        defer { gate.open() }
+        var validations = 0
+        let harness = try await makePlaybackCoordinatorHarness(
+            audioSessionManager: FakeAudioSessionManager(), offlineOnly: false, fileData: nil,
+            validateAudio: { url in
+                validations += 1
+                if validations == 1 { await gate.wait() }
+                try await LocalAudioFile.validate(url)
+            },
+            trackDuration: 24, playbackTransport: transport, player: player
+        )
+        defer { harness.coordinator.stop() }
+        await harness.coordinator.play(albumDetail: harness.albumDetail, startAt: 0)
+        let firstItem = try XCTUnwrap(player.currentItem)
+        player.streamPosition = 12
+        NotificationCenter.default.post(name: .AVPlayerItemFailedToPlayToEndTime, object: firstItem)
+        try await waitForTestCondition { gate.isWaiting }
+
+        await harness.coordinator.togglePlayback()
+        XCTAssertFalse(harness.coordinator.isBuffering)
+        XCTAssertEqual(player.plays.count, 1)
+        await harness.coordinator.togglePlayback()
+        gate.open()
+
+        XCTAssertEqual(player.plays.count, 2)
+        XCTAssertEqual(try XCTUnwrap(player.plays.last?.time), 12, accuracy: 0.25)
+        XCTAssertEqual(transport.requests.count, 1)
+    }
+
+    func testRecoveryDoesNotPlayWhenLocalFileCannotReachTheCheckpoint() async throws {
+        let transport = RecordingTransport() // This candidate contains only one second of audio.
+        let player = RecordingPlayer()
+        let harness = try await makePlaybackCoordinatorHarness(
+            audioSessionManager: FakeAudioSessionManager(), offlineOnly: false, fileData: nil,
+            trackDuration: 24, playbackTransport: transport, player: player
+        )
+        defer { harness.coordinator.stop() }
+        await harness.coordinator.play(albumDetail: harness.albumDetail, startAt: 0)
+        let firstItem = try XCTUnwrap(player.currentItem)
+
+        player.streamPosition = 12
+        NotificationCenter.default.post(name: .AVPlayerItemFailedToPlayToEndTime, object: firstItem)
+        try await waitForTestCondition { harness.coordinator.lastError != nil }
+
+        XCTAssertEqual(player.plays.count, 1)
+        XCTAssertFalse(harness.coordinator.isBuffering)
+        XCTAssertEqual(harness.coordinator.elapsed, 12)
+        XCTAssertTrue(harness.coordinator.lastError?.contains("previous position") == true)
+    }
+
     func testAudioSessionActivationFailureDoesNotMarkTrackAsPlaying() async throws {
         let sessionManager = FakeAudioSessionManager()
         sessionManager.activationError = NSError(
@@ -265,7 +346,7 @@ final class PlaybackCoordinatorTests: XCTestCase {
         harness.coordinator.stop()
     }
 
-    func testInvalidDownloadOnlineFallsBackToStreaming() async throws {
+    func testInvalidDownloadOnlineFallsBackToCachedAudio() async throws {
         let sessionManager = FakeAudioSessionManager()
         // Stop at activation so the test doesn't depend on a real server/audio route.
         sessionManager.activationError = NSError(domain: "Test", code: 1)
@@ -365,6 +446,25 @@ private struct PlaybackCoordinatorHarness {
     let settingsStore: SettingsStore
 }
 
+private final class RecordingPlayer: AVPlayer {
+    var streamPosition: TimeInterval = 0
+    private(set) var plays: [(url: URL, time: TimeInterval)] = []
+
+    // Use AVFoundation's actual seek for the local replacement, but don't
+    // require a Bluetooth output route or a real streaming connection.
+    override func play() {
+        guard let asset = currentItem?.asset as? AVURLAsset else { return }
+        plays.append((asset.url, currentTime().seconds))
+    }
+
+    override func currentTime() -> CMTime {
+        if let asset = currentItem?.asset as? AVURLAsset, !asset.url.isFileURL {
+            return CMTime(seconds: streamPosition, preferredTimescale: 600)
+        }
+        return super.currentTime()
+    }
+}
+
 private final class FakeAudioSessionManager: AudioSessionManaging {
     var activationError: Error?
     private(set) var activationCount = 0
@@ -399,8 +499,11 @@ private final class DelayedAudioSessionManager: AudioSessionManaging {
 private func makePlaybackCoordinatorHarness(
     audioSessionManager: AudioSessionManaging,
     offlineOnly: Bool = true,
-    fileData: Data = testAudioData(),
-    validateAudio: LocalAudioFile.Validator? = nil
+    fileData: Data? = testAudioData(),
+    validateAudio: LocalAudioFile.Validator? = nil,
+    trackDuration: TimeInterval = 210,
+    playbackTransport: Transporting? = nil,
+    player: AVPlayer? = nil
 ) async throws -> PlaybackCoordinatorHarness {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -434,7 +537,7 @@ private func makePlaybackCoordinatorHarness(
         artistID: album.artistID,
         artistName: album.artistName,
         albumName: album.name,
-        duration: 210,
+        duration: trackDuration,
         trackNumber: 1,
         discNumber: 1,
         contentType: "audio/mpeg",
@@ -442,29 +545,31 @@ private func makePlaybackCoordinatorHarness(
         path: nil
     )
 
-    let downloadedFile = downloadsDirectory.appendingPathComponent("album-1/1-track-1.wav", isDirectory: false)
-    try FileManager.default.createDirectory(at: downloadedFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try fileData.write(to: downloadedFile)
-    try await recordsStore.save([
-        DownloadRecord(
-            album: album,
-            tracks: [track],
-            downloadedTracks: [
-                DownloadedTrackRecord(
-                    trackID: track.id,
-                    relativePath: "album-1/1-track-1.wav",
-                    bytes: Int64(fileData.count),
-                    ownerKeys: [DownloadManager.ownerKeyForAlbum(album.id)]
-                )
-            ],
-            pinned: false,
-            state: DownloadState(status: .downloaded, progress: 1, errorMessage: nil),
-            downloadedAt: Date(),
-            totalBytes: 1024,
-            playCount: 0,
-            lastPlayedAt: nil
-        )
-    ])
+    if let fileData {
+        let downloadedFile = downloadsDirectory.appendingPathComponent("album-1/1-track-1.wav", isDirectory: false)
+        try FileManager.default.createDirectory(at: downloadedFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileData.write(to: downloadedFile)
+        try await recordsStore.save([
+            DownloadRecord(
+                album: album,
+                tracks: [track],
+                downloadedTracks: [
+                    DownloadedTrackRecord(
+                        trackID: track.id,
+                        relativePath: "album-1/1-track-1.wav",
+                        bytes: Int64(fileData.count),
+                        ownerKeys: [DownloadManager.ownerKeyForAlbum(album.id)]
+                    )
+                ],
+                pinned: false,
+                state: DownloadState(status: .downloaded, progress: 1, errorMessage: nil),
+                downloadedAt: Date(),
+                totalBytes: Int64(fileData.count),
+                playCount: 0,
+                lastPlayedAt: nil
+            )
+        ])
+    }
 
     let downloadManager = DownloadManager(
         settingsStore: settingsStore,
@@ -477,7 +582,7 @@ private func makePlaybackCoordinatorHarness(
     let playbackCacheManager = PlaybackCacheManager(
         recordsStore: playbackCacheStore,
         cacheDirectory: playbackCacheDirectory,
-        clientProvider: { try makeClient() }
+        clientProvider: { try makeClient(using: playbackTransport ?? RecordingTransport()) }
     )
     let playbackReportingManager = PlaybackReportingManager(
         queueStore: playbackScrobbleStore,
@@ -491,6 +596,7 @@ private func makePlaybackCoordinatorHarness(
         settingsStore: settingsStore,
         audioSessionManager: audioSessionManager,
         validateAudio: validateAudio,
+        player: player,
         clientProvider: { try makeClient() }
     )
 

@@ -1,11 +1,15 @@
 import XCTest
 @testable import wristonic_Watch_App
 
-// One second of mono 16-bit PCM silence, with a real WAV header. Random bytes
-// cannot exercise validation of a playable local container.
-func testAudioData() -> Data {
+// Mono 16-bit PCM silence, with a real WAV header for validation and seeking.
+func testAudioData(seconds: Int = 1) -> Data {
     var data = Data(base64Encoded: "UklGRqQ+AABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YYA+AAA=")!
-    data.append(Data(repeating: 0, count: 16_000))
+    let byteCount = seconds * 16_000
+    let riffLength = withUnsafeBytes(of: UInt32(byteCount + 36).littleEndian) { Array($0) }
+    let dataLength = withUnsafeBytes(of: UInt32(byteCount).littleEndian) { Array($0) }
+    data.replaceSubrange(4..<8, with: riffLength)
+    data.replaceSubrange(40..<44, with: dataLength)
+    data.append(Data(repeating: 0, count: byteCount))
     return data
 }
 
