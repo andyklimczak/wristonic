@@ -42,7 +42,7 @@ struct WristonicLauncherView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Wristonic")
                             .font(.headline)
-                        Text("Tap to play")
+                        Text("Open Wristonic")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -58,6 +58,7 @@ struct WristonicLauncherView: View {
         }
         .widgetAccentable()
         .containerBackground(for: .widget) { Color.clear }
+        .widgetURL(URL(string: "wristonic://complication"))
     }
 }
 
