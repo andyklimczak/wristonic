@@ -203,9 +203,17 @@ struct PlaylistDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            } else if !environment.settingsStore.settings.offlineOnly {
+            } else {
+                let offlineOnly = environment.settingsStore.settings.offlineOnly
                 Button(environment.downloadManager.hasLocalContent(playlistID: playlistDetail.playlist.id) ? "Redownload Playlist" : "Download Playlist") {
                     environment.downloadManager.enqueue(playlistDetail: playlistDetail)
+                }
+                .disabled(offlineOnly)
+
+                if offlineOnly {
+                    Text("Offline Only is on. Turn it off in Settings to download.")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
                 }
             }
 
